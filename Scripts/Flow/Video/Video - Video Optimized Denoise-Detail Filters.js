@@ -1,27 +1,51 @@
 /**
  * @name Video - Video Optimized Denoise-Detail Filters
+ * @description
+ *  Uses OptimizedEstimatePerHour (or falls back to file.Orig.Size + duration)
+ *  to:
+ *   - classify video into 4K vs non-4K
+ *   - split into 4 GB/hr buckets
+ *   - set Variables.VppFilterDenoiseDetail with vpp_qsv denoise/detail
+ *   - return Output 1–4 for routing
+ *
+ *  4K buckets (in GB/hr):
+ *      1) > 20
+ *      2) > 10
+ *      3) > 5
+ *      4) ≤ 5 (no denoise/detail)
+ *
+ *  non-4K (1080p and below) buckets (in GB/hr):
+ *      1) > 9
+ *      2) > 4.5
+ *      3) > 2.25
+ *      4) ≤ 2.25 (no denoise/detail)
+ *
+ *  Fallback GB/hr:
+ *      estBytesPerHour = file.Orig.Size (bytes) / (durationHours)
+ *
+ *  If GB/hr cannot be calculated, returns -1.
+ *
  * @author Ken
- * @revision 9
- * @minimumVersion 1.0.0.0
- * @output Output 1
- * @output Output 2
- * @output Output 3
- * @output Output 4
+ * @revision 25
+ * @outputs 4
  */
+
 function Script()
 {
+    const GB = 1024 * 1024 * 1024;
+
+    Logger.ILog("[AIO] ---- Start ----");
+
     // ----------------------------------------------------
-    // 0) Get first video stream (same style as sample scripts)
+    // 0) Get first video stream
     // ----------------------------------------------------
-    let video = Variables.vi?.VideoInfo?.VideoStreams[0];
+    let video = Variables.vi?.VideoInfo?.VideoStreams?.[0];
     if (!video)
     {
-        Logger.ELog("[AIO] No video stream in Variables.vi.VideoInfo.VideoStreams[0] → return -1.");
+        Logger.ELog("[AIO] No video stream in Variables.vi?.VideoInfo?.VideoStreams[0] → return -1.");
         Variables.VppFilterDenoiseDetail = "";
         return -1;
     }
-
-    Logger.ILog("[AIO] ---- Start ----");
 
     // ----------------------------------------------------
     // 1) Resolution detection: 4K vs non-4K
@@ -37,14 +61,12 @@ function Script()
     if (w != null && !isNaN(w))
     {
         w = Number(w);
-        Logger.ILog("[AIO] Parsed width  = " + w);
         if (w >= 3800)
             is4k = true;
     }
     if (h != null && !isNaN(h))
     {
         h = Number(h);
-        Logger.ILog("[AIO] Parsed height = " + h);
         if (h >= 2000)
             is4k = true;
     }
@@ -52,137 +74,148 @@ function Script()
     Logger.ILog("[AIO] is4k = " + is4k);
 
     // ----------------------------------------------------
-    // 2) Get or compute est = bytes/hr
+    // 2) Filesize (bytes) – prefer file.Orig.Size
     // ----------------------------------------------------
-    let est = Variables.OptimizedEstimatePerHour;
-    let needFallback = (est == null || est === "" || isNaN(est) || Number(est) <= 0);
+    let sizeBytes = null;
 
-    if (needFallback)
+    if (Variables["file.Orig.Size"] != null && !isNaN(Variables["file.Orig.Size"]))
+        sizeBytes = Number(Variables["file.Orig.Size"]);
+    else if (Variables["file.Size"] != null && !isNaN(Variables["file.Size"]))
+        sizeBytes = Number(Variables["file.Size"]);
+
+    let sizeGB = sizeBytes ? (sizeBytes / GB) : 0;
+
+    // ----------------------------------------------------
+    // 3) Duration in minutes from video.Duration.TotalMinutes
+    // ----------------------------------------------------
+    let videoMinutes = null;
+    if (video.Duration && typeof video.Duration.TotalMinutes !== "undefined")
     {
-        Logger.WLog("[AIO] OptimizedEstimatePerHour missing/invalid → fallback to filesize + duration.");
-
-        // Prefer original size, fall back to current file size
-        let size = null;
-        if (Variables.file && Variables.file.Orig && Variables.file.Orig.Size)
-            size = Variables.file.Orig.Size;
-        else if (Variables.file && Variables.file.Size)
-            size = Variables.file.Size;
-
-        // Use TotalMinutes as per sample script
-        let minutes = 0;
-        if (video.Duration && typeof video.Duration.TotalMinutes === "number")
+        let rawMinutes = video.Duration.TotalMinutes;
+        if (typeof rawMinutes === "number")
+            videoMinutes = Math.ceil(rawMinutes);
+        else
         {
-            minutes = Math.ceil(video.Duration.TotalMinutes);
+            let num = Number(rawMinutes);
+            if (!isNaN(num))
+                videoMinutes = Math.ceil(num);
         }
-        else if (video.Duration && typeof video.Duration.TotalMinutes === "string")
-        {
-            let m = Number(video.Duration.TotalMinutes);
-            if (!isNaN(m))
-                minutes = Math.ceil(m);
-        }
+    }
 
-        const GB = 1024 * 1024 * 1024;
+    Logger.ILog("[AIO] file.Orig.Size (bytes): " + Variables["file.Orig.Size"]);
+    Logger.ILog("[AIO] file.Size (bytes):      " + Variables["file.Size"]);
+    Logger.ILog("[AIO] Chosen filesize (bytes): " + sizeBytes);
+    Logger.ILog("[AIO] Chosen filesize (GB):    " + (sizeGB ? sizeGB.toFixed(3) : "NaN"));
+    Logger.ILog("[AIO] Video length raw TotalMinutes: " + (video.Duration ? video.Duration.TotalMinutes : "null"));
+    Logger.ILog("[AIO] Video length (min, rounded):   " + videoMinutes);
 
-        Logger.ILog("[AIO] Raw file.(Orig.)Size or file.Size = " + size);
-        if (size != null && !isNaN(size))
-            Logger.ILog("[AIO] Filesize ≈ " + (size / GB).toFixed(2) + " GB");
+    // ----------------------------------------------------
+    // 4) Determine estBytesPerHour (bytes/hr)
+    // ----------------------------------------------------
+    let estBytesPerHour = null;
 
-        Logger.ILog("[AIO] video.Duration.TotalMinutes = "
-            + (video.Duration ? video.Duration.TotalMinutes : "null"));
-        Logger.ILog("[AIO] Parsed durationMinutes = " + minutes + " min");
-
-        // If we still don't have valid size/duration → fail with -1
-        if (!size || isNaN(size) || !minutes || isNaN(minutes) || size <= 0 || minutes <= 0)
-        {
-            Logger.ELog("[AIO] Fallback failed (invalid size/duration) → return -1.");
-            Variables.VppFilterDenoiseDetail = "";
-            return -1;
-        }
-
-        let hours = minutes / 60.0;
-        est = size / hours; // bytes per hour
-
-        Logger.ILog("[AIO] Fallback est = " + est + " bytes/hr");
+    // 4a) Use OptimizedEstimatePerHour if valid
+    let estVar = Variables.OptimizedEstimatePerHour;
+    if (estVar != null && estVar !== "" && !isNaN(estVar) && Number(estVar) > 0)
+    {
+        estBytesPerHour = Number(estVar);
+        Logger.ILog("[AIO] Using Variables.OptimizedEstimatePerHour: " + estBytesPerHour + " bytes/hr");
     }
     else
     {
-        est = Number(est);
-        Logger.ILog("[AIO] Using provided OptimizedEstimatePerHour = " + est + " bytes/hr");
+        Logger.WLog("[AIO] OptimizedEstimatePerHour missing/invalid → fallback to file.Orig.Size + duration.");
+
+        if (sizeBytes && !isNaN(sizeBytes) &&
+            videoMinutes && !isNaN(videoMinutes) &&
+            sizeBytes > 0 && videoMinutes > 0)
+        {
+            let hours = videoMinutes / 60.0;
+            estBytesPerHour = sizeBytes / hours;
+
+            Logger.ILog("[AIO] Fallback sizeBytes: " + sizeBytes + " bytes (" + sizeGB.toFixed(3) + " GB)");
+            Logger.ILog("[AIO] Fallback duration:  " + videoMinutes + " minutes");
+            Logger.ILog("[AIO] Fallback est (bytes/hr): " + estBytesPerHour);
+        }
     }
 
-    // ----------------------------------------------------
-    // 3) Thresholds
-    // ----------------------------------------------------
-    const GB = 1024 * 1024 * 1024;
+    // 4b) Bail if we still can't compute GB/hr
+    if (!estBytesPerHour || isNaN(estBytesPerHour) || estBytesPerHour <= 0)
+    {
+        Logger.ELog("[AIO] Cannot calculate GB/hr (no valid estBytesPerHour) → return -1.");
+        Variables.VppFilterDenoiseDetail = "";
+        return -1;
+    }
 
-    // Debug GB/hr
-    let estGBhr = est / GB;
-    Logger.ILog("[AIO] est ≈ " + estGBhr.toFixed(2) + " GB/hr");
+    let estGBhr = estBytesPerHour / GB;
+    Logger.ILog("[AIO] Final est ≈ " + estGBhr.toFixed(3) + " GB/hr");
 
+    // ----------------------------------------------------
+    // 5) Thresholds (bytes/hr)
+    // ----------------------------------------------------
     // 4K thresholds
-    const T4K1 = 20 * GB;
-    const T4K2 = 10 * GB;
-    const T4K3 = 5  * GB;
+    const T4K1    = 20 * GB;   // >20 GB/hr
+    const T4K2    = 10 * GB;   // >10 GB/hr
+    const T4K3    = 5  * GB;   // > 5 GB/hr
 
-    // non-4K thresholds (1080p and below)
-    const T1080_1 = 9    * GB;
-    const T1080_2 = 4.5  * GB;
-    const T1080_3 = 2.25 * GB;
+    // 1080p / non-4K thresholds
+    const T1080_1 = 9    * GB; // > 9 GB/hr
+    const T1080_2 = 4.5  * GB; // > 4.5 GB/hr
+    const T1080_3 = 2.25 * GB; // > 2.25 GB/hr
 
     // ----------------------------------------------------
-    // 4) Classify + set Variables.VppFilterDenoiseDetail
+    // 6) Bucket classification + VppFilterDenoiseDetail
     // ----------------------------------------------------
     if (is4k)
     {
-        Logger.ILog("[AIO] Using 4K thresholds");
+        Logger.ILog("[AIO] Using 4K thresholds: >20 / >10 / >5 GB/hr");
 
-        if (est > T4K1)
+        if (estBytesPerHour > T4K1)
         {
-            Logger.ILog("[AIO] Bucket 1 (4K, >20 GB/hr) → strong denoise");
             Variables.VppFilterDenoiseDetail = "vpp_qsv=denoise=45:detail=30";
+            Logger.ILog("[AIO] 4K → Bucket 1, filter: " + Variables.VppFilterDenoiseDetail);
             return 1;
         }
-        if (est > T4K2)
+        if (estBytesPerHour > T4K2)
         {
-            Logger.ILog("[AIO] Bucket 2 (4K, >10 GB/hr)");
             Variables.VppFilterDenoiseDetail = "vpp_qsv=denoise=36:detail=24";
+            Logger.ILog("[AIO] 4K → Bucket 2, filter: " + Variables.VppFilterDenoiseDetail);
             return 2;
         }
-        if (est > T4K3)
+        if (estBytesPerHour > T4K3)
         {
-            Logger.ILog("[AIO] Bucket 3 (4K, >5 GB/hr)");
             Variables.VppFilterDenoiseDetail = "vpp_qsv=denoise=28:detail=18";
+            Logger.ILog("[AIO] 4K → Bucket 3, filter: " + Variables.VppFilterDenoiseDetail);
             return 3;
         }
 
-        Logger.ILog("[AIO] Bucket 4 (4K, <=5 GB/hr) → no denoise/detail");
         Variables.VppFilterDenoiseDetail = "";
+        Logger.ILog("[AIO] 4K → Bucket 4, no denoise/detail");
         return 4;
     }
 
-    // --- Non-4K (1080p and below) ---
-    Logger.ILog("[AIO] Using 1080p / non-4K thresholds");
+    // Non-4K path
+    Logger.ILog("[AIO] Using 1080p/non-4K thresholds: >9 / >4.5 / >2.25 GB/hr");
 
-    if (est > T1080_1)
+    if (estBytesPerHour > T1080_1)
     {
-        Logger.ILog("[AIO] Bucket 1 (non-4K, >9 GB/hr) → strong denoise");
         Variables.VppFilterDenoiseDetail = "vpp_qsv=denoise=45:detail=30";
+        Logger.ILog("[AIO] HD → Bucket 1, filter: " + Variables.VppFilterDenoiseDetail);
         return 1;
     }
-    if (est > T1080_2)
+    if (estBytesPerHour > T1080_2)
     {
-        Logger.ILog("[AIO] Bucket 2 (non-4K, >4.5 GB/hr)");
         Variables.VppFilterDenoiseDetail = "vpp_qsv=denoise=36:detail=24";
+        Logger.ILog("[AIO] HD → Bucket 2, filter: " + Variables.VppFilterDenoiseDetail);
         return 2;
     }
-    if (est > T1080_3)
+    if (estBytesPerHour > T1080_3)
     {
-        Logger.ILog("[AIO] Bucket 3 (non-4K, >2.25 GB/hr)");
         Variables.VppFilterDenoiseDetail = "vpp_qsv=denoise=28:detail=18";
+        Logger.ILog("[AIO] HD → Bucket 3, filter: " + Variables.VppFilterDenoiseDetail);
         return 3;
     }
 
-    Logger.ILog("[AIO] Bucket 4 (non-4K, <=2.25 GB/hr) → no denoise/detail");
     Variables.VppFilterDenoiseDetail = "";
+    Logger.ILog("[AIO] HD → Bucket 4, no denoise/detail");
     return 4;
 }
