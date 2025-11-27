@@ -5,7 +5,6 @@
  *  to:
  *   - classify video into 4K vs non-4K
  *   - split into 4 GB/hr buckets
- *   - set Variables.VppFilterDenoiseDetail with vpp_qsv denoise/detail
  *   - return Output 1–4 for routing
  *
  *  4K buckets (in GB/hr):
@@ -26,8 +25,11 @@
  *  If GB/hr cannot be calculated, returns -1.
  *
  * @author Ken
- * @revision 25
- * @outputs 4
+ * @revision 26
+ * @output High Denoise/Detail
+ * @output Medium Denoise/Detail
+ * @output Low Denoise/Detail
+ * @output No Denoise/Detail
  */
 
 function Script()
@@ -43,7 +45,6 @@ function Script()
     if (!video)
     {
         Logger.ELog("[AIO] No video stream in Variables.vi?.VideoInfo?.VideoStreams[0] → return -1.");
-        Variables.VppFilterDenoiseDetail = "";
         return -1;
     }
 
@@ -142,7 +143,6 @@ function Script()
     if (!estBytesPerHour || isNaN(estBytesPerHour) || estBytesPerHour <= 0)
     {
         Logger.ELog("[AIO] Cannot calculate GB/hr (no valid estBytesPerHour) → return -1.");
-        Variables.VppFilterDenoiseDetail = "";
         return -1;
     }
 
@@ -163,7 +163,7 @@ function Script()
     const T1080_3 = 2.25 * GB; // > 2.25 GB/hr
 
     // ----------------------------------------------------
-    // 6) Bucket classification + VppFilterDenoiseDetail
+    // 6) Bucket classification
     // ----------------------------------------------------
     if (is4k)
     {
@@ -171,24 +171,20 @@ function Script()
 
         if (estBytesPerHour > T4K1)
         {
-            Variables.VppFilterDenoiseDetail = "vpp_qsv=denoise=45:detail=30";
-            Logger.ILog("[AIO] 4K → Bucket 1, filter: " + Variables.VppFilterDenoiseDetail);
+            Logger.ILog("[AIO] 4K → Bucket 1, filter: vpp_qsv=denoise=45:detail=30");
             return 1;
         }
         if (estBytesPerHour > T4K2)
         {
-            Variables.VppFilterDenoiseDetail = "vpp_qsv=denoise=36:detail=24";
-            Logger.ILog("[AIO] 4K → Bucket 2, filter: " + Variables.VppFilterDenoiseDetail);
+            Logger.ILog("[AIO] 4K → Bucket 2, filter: vpp_qsv=denoise=36:detail=24");
             return 2;
         }
         if (estBytesPerHour > T4K3)
         {
-            Variables.VppFilterDenoiseDetail = "vpp_qsv=denoise=28:detail=18";
-            Logger.ILog("[AIO] 4K → Bucket 3, filter: " + Variables.VppFilterDenoiseDetail);
+            Logger.ILog("[AIO] 4K → Bucket 3, filter: vpp_qsv=denoise=28:detail=18");
             return 3;
         }
 
-        Variables.VppFilterDenoiseDetail = "";
         Logger.ILog("[AIO] 4K → Bucket 4, no denoise/detail");
         return 4;
     }
@@ -198,24 +194,20 @@ function Script()
 
     if (estBytesPerHour > T1080_1)
     {
-        Variables.VppFilterDenoiseDetail = "vpp_qsv=denoise=45:detail=30";
-        Logger.ILog("[AIO] HD → Bucket 1, filter: " + Variables.VppFilterDenoiseDetail);
+        Logger.ILog("[AIO] HD → Bucket 1, filter: vpp_qsv=denoise=45:detail=30");
         return 1;
     }
     if (estBytesPerHour > T1080_2)
     {
-        Variables.VppFilterDenoiseDetail = "vpp_qsv=denoise=36:detail=24";
-        Logger.ILog("[AIO] HD → Bucket 2, filter: " + Variables.VppFilterDenoiseDetail);
+        Logger.ILog("[AIO] HD → Bucket 2, filter: vpp_qsv=denoise=36:detail=24");
         return 2;
     }
     if (estBytesPerHour > T1080_3)
     {
-        Variables.VppFilterDenoiseDetail = "vpp_qsv=denoise=28:detail=18";
-        Logger.ILog("[AIO] HD → Bucket 3, filter: " + Variables.VppFilterDenoiseDetail);
+        Logger.ILog("[AIO] HD → Bucket 3, filter: vpp_qsv=denoise=28:detail=18");
         return 3;
     }
 
-    Variables.VppFilterDenoiseDetail = "";
     Logger.ILog("[AIO] HD → Bucket 4, no denoise/detail");
     return 4;
 }
