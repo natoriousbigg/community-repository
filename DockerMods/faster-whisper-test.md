@@ -7,7 +7,7 @@ Use these commands after applying the DockerMod to confirm that the small faster
 ```bash
 docker exec -it <fileflows-container> bash -lc "\
   /app/data/faster-whisper/venv/bin/pip show faster-whisper && \
-  /app/data/faster-whisper/venv/bin/python - <<'PY'\
+  /app/data/faster-whisper/venv/bin/python - <<'PY'
 from faster_whisper import WhisperModel
 import pathlib
 model_dir = pathlib.Path('/app/data/faster-whisper/models/faster-whisper-small')
@@ -25,7 +25,7 @@ This test generates a one-second 440 Hz sine-wave WAV file, runs a transcription
 
 ```bash
 docker exec -it <fileflows-container> bash -lc "\
-  /app/data/faster-whisper/venv/bin/python - <<'PY'\
+  /app/data/faster-whisper/venv/bin/python - <<'PY'
 import math, wave, struct, pathlib, tempfile
 from faster_whisper import WhisperModel
 
