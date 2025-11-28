@@ -3,7 +3,7 @@
  * @description Tonemaps DoVi without a fallback to HDR (QSV + opencl)
  * @help Put me before ffmpeg execute, supports Linux (VAAPI) and Windows (d3d11va)
  * @author lawrence
- * @revision 20
+ * @revision 21
  * @param {string} VaapiDevice Optional VAAPI device path (e.g. /dev/dri/renderD128)
  * @output Setup DoVi tonemapping
  * @output Did nothing
@@ -36,7 +36,7 @@ Variables.NoQSV = true;
 var filtered = false;
 var openclInitSet = false;
 var filterDeviceSet = false;
-var pixFmtSet = false;
+var pixFmtInserted = false;
   var tonemap = "hwupload,tonemap_opencl=format=p010le:p=bt2020:t=smpte2084:m=bt2020:tonemap=bt2390:peak=100:desat=0,hwdownload";
 
 function convertVppCropToCpu(filterStr) {
@@ -80,9 +80,15 @@ for (let i = 0; i < FFmpeg.Args.length - 1; i++) {
   if (FFmpeg.Args[i] === "-hwaccel") {
     FFmpeg.Args[i + 1] = "d3d11va";
   }
+  if (FFmpeg.Args[i] === "-hwaccel_output_format") {
+    FFmpeg.Args.splice(i, 2);
+    i -= 2;
+    continue;
+  }
   if (FFmpeg.Args[i] === "-pix_fmt") {
-    pixFmtSet = true;
-    FFmpeg.Args[i + 1] = "p010le";
+    FFmpeg.Args.splice(i, 2);
+    i -= 2;
+    continue;
   }
 
   if (FFmpeg.Args[i] === "-filter:v:0") {
@@ -101,7 +107,16 @@ if (!filterDeviceSet) {
 if (!openclInitSet) {
   FFmpeg.Args.unshift("-init_hw_device", "opencl=ocl:0");
 }
-if (!pixFmtSet) {
+
+for (let i = 0; i < FFmpeg.Args.length; i++) {
+  if (FFmpeg.Args[i] === "-i" && i + 1 < FFmpeg.Args.length) {
+    FFmpeg.Args.splice(i + 2, 0, "-pix_fmt", "p010le");
+    pixFmtInserted = true;
+    break;
+  }
+}
+
+if (!pixFmtInserted) {
   FFmpeg.Args.push("-pix_fmt", "p010le");
 }
 
