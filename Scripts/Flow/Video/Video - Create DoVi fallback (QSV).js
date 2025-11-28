@@ -1,28 +1,148 @@
 /**
  * @name Video - Create DoVi fallback (QSV)
  * @description Tonemaps DoVi without a fallback to HDR (QSV + opencl)
- * @help Put me before ffmpeg execute, this will only work on linux
+ * @help Put me before ffmpeg execute, supports Linux (VAAPI) and Windows (d3d11va)
  * @author lawrence
- * @revision 16
+ * @revision 22
+ * @param {string} VaapiDevice Optional VAAPI device path (e.g. /dev/dri/renderD128)
  * @output Setup DoVi tonemapping
  * @output Did nothing
  */
-function Script() {
+function Script(VaapiDevice) {
   const ff = Variables?.FfmpegBuilderModel;
   const video = ff?.VideoStreams?.[0];
+  const isWindows = typeof Flow !== "undefined" && Flow.IsWindows;
+  const vaapiDevicePath = (() => {
+    const preferred = "/dev/dri/renderD128";
+    const fallback = "/dev/dri/renderD129";
+
+    if (VaapiDevice && String(VaapiDevice).trim()) return String(VaapiDevice).trim();
+
+    const canCheck = typeof Flow !== "undefined" && typeof Flow.FileExists === "function";
+    if (canCheck && Flow.FileExists(preferred)) return preferred;
+    if (canCheck && Flow.FileExists(fallback)) return fallback;
+    return preferred;
+  })();
 
   // Only run for DoVi-without-HDR fallback
   if (!video || !video.Stream?.DolbyVision || video.Stream?.HDR) return 2;
 
   video.ForcedChange = true;
 
-  Variables.FfmpegBuilderModel.PreExecuteCode = `
+  Variables.FfmpegBuilderModel.PreExecuteCode = isWindows
+    ? `
+Variables.NoQSV = true;
+
+var filtered = false;
+var openclInitSet = false;
+var filterDeviceSet = false;
+var pixFmtSeen = false;
+  var tonemap = "hwupload,tonemap_opencl=format=p010le:p=bt2020:t=smpte2084:m=bt2020:tonemap=bt2390:peak=100:desat=0,hwdownload";
+
+function convertVppCropToCpu(filterStr) {
+  if (typeof filterStr !== "string") return filterStr;
+
+  // vpp_qsv=cw=3840:ch=2076:cx=0:cy=42 -> crop=3840:2076:0:42
+  return filterStr.replace(/vpp_qsv=cw=([0-9]+):ch=([0-9]+):cx=([0-9]+):cy=([0-9]+)/g, "crop=$1:$2:$3:$4");
+}
+
+function reorderCropAfterHwdownload(filterStr) {
+  if (typeof filterStr !== "string" || !filterStr.trim()) return "";
+
+  var parts = filterStr.split(",").map(function (p) { return p.trim(); }).filter(Boolean);
+  var crops = [];
+  var others = [];
+
+  for (var idx = 0; idx < parts.length; idx++) {
+    var part = parts[idx];
+    if (part.startsWith("crop=")) {
+      crops.push(part);
+    } else {
+      others.push(part);
+    }
+  }
+
+  if (!crops.length) return others.join(",");
+  return crops.join(",") + (others.length ? "," + others.join(",") : "");
+}
+
+for (let i = 0; i < FFmpeg.Args.length - 1; i++) {
+  if (FFmpeg.Args[i] === "-init_hw_device") {
+    openclInitSet = true;
+    if (!String(FFmpeg.Args[i + 1]).startsWith("opencl=")) {
+      FFmpeg.Args[i + 1] = "opencl=ocl:0";
+    }
+  }
+  if (FFmpeg.Args[i] === "-filter_hw_device") {
+    filterDeviceSet = true;
+    FFmpeg.Args[i + 1] = "ocl";
+  }
+  if (FFmpeg.Args[i] === "-hwaccel") {
+    FFmpeg.Args[i + 1] = "d3d11va";
+  }
+  if (FFmpeg.Args[i] === "-pix_fmt") {
+    pixFmtSeen = true;
+  }
+
+  if (FFmpeg.Args[i] === "-filter:v:0") {
+    filtered = true;
+    let existing = FFmpeg.Args[i + 1] || "";
+    existing = convertVppCropToCpu(existing);
+    const reordered = reorderCropAfterHwdownload(existing);
+    FFmpeg.Args[i + 1] = tonemap + (reordered ? "," + reordered : "");
+  }
+}
+
+if (!filterDeviceSet) {
+  FFmpeg.Args.unshift("-filter_hw_device", "ocl");
+  filterDeviceSet = true;
+}
+if (!openclInitSet) {
+  FFmpeg.Args.unshift("-init_hw_device", "opencl=ocl:0");
+}
+// Remove all occurrences of "-hwaccel_output_format" (and its value)
+for (let i = FFmpeg.Args.length - 2; i >= 0; i--) {
+  if (FFmpeg.Args[i] === "-hwaccel_output_format") {
+    FFmpeg.Args.splice(i, 2);
+  }
+}
+
+// Remove any existing -pix_fmt pairs so we can re-insert in the proper place
+if (pixFmtSeen) {
+  for (let i = FFmpeg.Args.length - 2; i >= 0; i--) {
+    if (FFmpeg.Args[i] === "-pix_fmt") {
+      FFmpeg.Args.splice(i, 2);
+    }
+  }
+}
+
+// Ensure "-pix_fmt p010le" sits immediately after the input argument
+var inputIndex = FFmpeg.Args.indexOf("-i");
+if (inputIndex !== -1 && inputIndex + 1 < FFmpeg.Args.length) {
+  FFmpeg.Args.splice(inputIndex + 2, 0, "-pix_fmt", "p010le");
+} else {
+  FFmpeg.Args.push("-pix_fmt", "p010le");
+}
+
+if (!filtered) {
+  for (let i = 0; i < FFmpeg.Args.length - 1; i++) {
+    if (FFmpeg.Args[i] === "0:v:0") {
+      FFmpeg.Args.splice(i + 1, 0, "-filter:v:0", tonemap);
+      if (!filterDeviceSet) {
+        FFmpeg.Args.splice(i + 3, 0, "-filter_hw_device", "ocl");
+      }
+      break;
+    }
+  }
+}
+`
+    : `
 Variables.NoQSV = true;
 
 // --- helpers ---
 function ensureVaapiInitFrom(initVal) {
   // Try to pull a device path from "child_device=" or any /dev/dri path, else default
-  const DEFAULT_DEV = "/dev/dri/renderD129";
+  const DEFAULT_DEV = "${vaapiDevicePath}";
 
   // example patterns we might see:
   //   "qsv=hw"
