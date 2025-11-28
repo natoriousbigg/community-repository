@@ -1,0 +1,113 @@
+/**
+ * @name Video - Create DoVi fallback (QSV)
+ * @description Tonemaps DoVi without a fallback to HDR (QSV + opencl)
+ * @help Put me before ffmpeg execute, this will only work on linux
+ * @author lawrence
+ * @revision 16
+ * @output Setup DoVi tonemapping
+ * @output Did nothing
+ */
+function Script() {
+  const ff = Variables?.FfmpegBuilderModel;
+  const video = ff?.VideoStreams?.[0];
+
+  // Only run for DoVi-without-HDR fallback
+  if (!video || !video.Stream?.DolbyVision || video.Stream?.HDR) return 2;
+
+  video.ForcedChange = true;
+
+  Variables.FfmpegBuilderModel.PreExecuteCode = `
+Variables.NoQSV = true;
+
+// --- helpers ---
+function ensureVaapiInitFrom(initVal) {
+  // Try to pull a device path from "child_device=" or any /dev/dri path, else default
+  const DEFAULT_DEV = "/dev/dri/renderD129";
+
+  // example patterns we might see:
+  //   "qsv=hw"
+  //   "qsv=gpu"
+  //   "qsv=hw_any,child_device=/dev/dri/renderD129"
+  //   "vaapi=va:/dev/dri/renderD129" (already VAAPI)
+  if (!initVal || typeof initVal !== "string") return "vaapi=va:" + DEFAULT_DEV;
+
+  if (initVal.startsWith("vaapi=")) {
+    // normalize alias and ensure path
+    const parts = initVal.split("=");
+    const right = parts.slice(1).join("="); // "va:/dev/dri/renderD129" or "va"
+    if (right.includes("/dev/dri/")) return "vaapi=va:" + right.split(":").pop();
+    return "vaapi=va:" + DEFAULT_DEV;
+  }
+
+  // Extract device path, if present
+  const childMatch = initVal.match(/child_device=([^,:]+)/);
+  if (childMatch && childMatch[1]) return "vaapi=va:" + childMatch[1];
+
+  const devMatch = initVal.match(/(\\/dev\\/dri\\/[^,:]+)/);
+  if (devMatch && devMatch[1]) return "vaapi=va:" + devMatch[1];
+
+  return "vaapi=va:" + DEFAULT_DEV;
+}
+
+function extractDeviceType(initVal) {
+  // "qsv=hw" -> "qsv", "vaapi=va:/dev/dri/renderD128" -> "vaapi"
+  if (!initVal) return "qsv";
+  return String(initVal).split("=")[0];
+}
+
+// --- configure tonemap chain ---
+var filtered = false;
+var tonemap = "hwmap=derive_device=opencl,tonemap_opencl=format=p010le:p=bt2020:t=smpte2084:m=bt2020:tonemap=bt2390:peak=100:desat=0";
+
+// Pass 1: Normalize devices and swap to vaapi path + qsv@va
+for (let i = 0; i < FFmpeg.Args.length - 1; i++) {
+  if (FFmpeg.Args[i] === "-init_hw_device") {
+    const original = FFmpeg.Args[i + 1];       // e.g., "qsv=hw"
+    const typeName = extractDeviceType(original); // e.g., "qsv"
+    const vaInit = ensureVaapiInitFrom(original); // e.g., "vaapi=va:/dev/dri/renderD129"
+
+    // Replace current with VAAPI init, then add "<type>@va"
+    FFmpeg.Args[i + 1] = vaInit;
+    FFmpeg.Args.splice(i + 2, 0, "-init_hw_device", typeName + "@va");
+    i += 2; // skip the thing we just inserted
+  }
+
+  if (FFmpeg.Args[i] === "-hwaccel") {
+    FFmpeg.Args[i + 1] = "vaapi";
+  }
+  if (FFmpeg.Args[i] === "-filter_hw_device") {
+    FFmpeg.Args[i + 1] = "va";
+  }
+  if (FFmpeg.Args[i] === "-hwaccel_output_format") {
+    FFmpeg.Args[i + 1] = "vaapi";
+  }
+
+  // If a video filter already exists, prepend tonemap + qsv remap to it
+  if (FFmpeg.Args[i] === "-filter:v:0") {
+    filtered = true;
+    const existing = FFmpeg.Args[i + 1] || "";
+    FFmpeg.Args[i + 1] = tonemap + ",hwmap=derive_device=qsv:reverse=1:extra_hw_frames=64,format=qsv"
+      + (existing ? ("," + existing) : "");
+  }
+}
+
+// Pass 2: If no -filter:v:0 set, inject one after the first "0:v:0"
+if (!filtered) {
+  for (let i = 0; i < FFmpeg.Args.length - 1; i++) {
+    if (FFmpeg.Args[i] === "0:v:0") {
+      FFmpeg.Args.splice(
+        i + 1,
+        0,
+        "-filter:v:0",
+        tonemap + ",hwmap=derive_device=qsv:reverse=1:extra_hw_frames=64,format=qsv",
+        "-filter_hw_device",
+        "va"
+      );
+      break;
+    }
+  }
+}
+`;
+
+  return 1;
+}
