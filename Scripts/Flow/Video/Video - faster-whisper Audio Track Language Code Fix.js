@@ -1,7 +1,7 @@
 /**
  * @name Video - faster-whisper Audio Track Language Code Fix
  * @uid 1a6d8f4b-1fcd-4db1-b534-44a3d4f72e5b
- * @description Samples each audio track and uses faster-whisper (distil-large-v3) to populate and standardize ISO 639-3 language codes.
+ * @description Samples each audio track and uses faster-whisper (distil-large-v3) to populate and standardize language codes.
  * @author OpenAI-Assistant
  * @revision 1
  * @param {string} device Device to run faster-whisper on (e.g. cpu, cuda, auto). Leave blank to default to cpu.
@@ -12,6 +12,25 @@
 function Script(device, compute_type) {
     const ffModel = Variables.FfmpegBuilderModel;
     const vi = Variables.vi?.VideoInfo;
+
+    /**
+     * Normalize a language value to the preferred ISO-639-3 code when available,
+     * falling back to ISO-639-2/1. Uses optional chaining to avoid calling
+     * helpers that may not exist in older runtimes.
+     */
+    const normalizeLanguage = (value) => {
+        const trimmed = (value || '').trim();
+        if (!trimmed)
+            return { iso3: '', iso2: '', iso1: '' };
+
+        const iso3 = LanguageHelper?.GetIso3Code?.(trimmed) || '';
+        const iso2 = LanguageHelper?.GetIso2Code?.(trimmed) || '';
+        const iso1 = LanguageHelper?.GetIso1Code?.(trimmed) || '';
+
+        // prefer the richest code available
+        const best = iso3 || iso2 || iso1 || trimmed;
+        return { iso3: iso3 || '', iso2: iso2 || '', iso1: iso1 || '', best };
+    };
 
     if (!ffModel) {
         Logger.ELog('[faster-whisper] FFMPEG Builder model not found; cannot update languages.');
@@ -93,13 +112,13 @@ function Script(device, compute_type) {
 
         const originalFfLang = (builderAudio.Language || '').trim();
         const originalViLang = (audio.Language || '').trim();
-        const normalizedFfLang = LanguageHelper.GetIso3Code(originalFfLang) || LanguageHelper.GetIso2Code(originalFfLang) || '';
-        const normalizedViLang = LanguageHelper.GetIso3Code(originalViLang) || LanguageHelper.GetIso2Code(originalViLang) || '';
-        const hadLanguage = normalizedFfLang.length > 0 || normalizedViLang.length > 0;
+        const normalizedFf = normalizeLanguage(originalFfLang);
+        const normalizedVi = normalizeLanguage(originalViLang);
+        const hadLanguage = normalizedFf.best?.length > 0 || normalizedVi.best?.length > 0;
 
         if (hadLanguage) {
-            const compareFf = normalizedFfLang || 'und';
-            const compareVi = normalizedViLang || 'und';
+            const compareFf = normalizedFf.best || 'und';
+            const compareVi = normalizedVi.best || 'und';
             if (compareFf === compareVi && compareFf !== 'und') {
                 Logger.ILog(`[faster-whisper] Audio track ${i} has matching language '${compareFf}' in builder/video info; verifying with detection and normalizing to ISO 639-3.`);
             } else {
@@ -159,14 +178,14 @@ function Script(device, compute_type) {
             continue;
         }
 
-        const iso3 = LanguageHelper.GetIso3Code(languageResult.language) || LanguageHelper.GetIso2Code(languageResult.language) || languageResult.language;
-        if (!iso3) {
+        const detected = normalizeLanguage(languageResult.language);
+        const normalizedDetected = detected.best;
+        if (!normalizedDetected) {
             Logger.WLog(`[faster-whisper] Unable to normalize language '${languageResult.language}' for track ${i}.`);
             continue;
         }
 
-        const normalizedDetected = iso3;
-        const previous = normalizedFfLang || normalizedViLang || 'missing';
+        const previous = normalizedFf.best || normalizedVi.best || 'missing';
         if (previous !== 'missing' && previous === normalizedDetected) {
             Logger.ILog(`[faster-whisper] Detected language '${normalizedDetected}' matches existing language for track ${i}.`);
         } else if (previous !== 'missing' && previous !== normalizedDetected) {
