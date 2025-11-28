@@ -15,10 +15,14 @@ log(){
 
 MODEL_REPO="distil-whisper/distil-large-v3"
 MODEL_DIR="/app/data/faster-whisper/models/distil-large-v3"
+VENV_DIR="/app/data/faster-whisper/venv"
+PYTHON_BIN="${VENV_DIR}/bin/python"
 
 if [[ "${1:-}" == "--uninstall" ]]; then
     log "Uninstall flag detected. Removing faster-whisper and model files..."
-    if command -v python3 >/dev/null 2>&1; then
+    if [[ -x "${VENV_DIR}/bin/pip" ]]; then
+        "${VENV_DIR}/bin/pip" uninstall -y faster-whisper huggingface_hub 2>/dev/null || true
+    elif command -v python3 >/dev/null 2>&1; then
         python3 -m pip uninstall -y faster-whisper huggingface_hub 2>/dev/null || true
     fi
     rm -rf "/app/data/faster-whisper"
@@ -26,23 +30,26 @@ if [[ "${1:-}" == "--uninstall" ]]; then
     exit 0
 fi
 
-log "Ensuring system dependencies are installed (python3, pip, ffmpeg)."
+log "Ensuring system dependencies are installed (python3, python3-venv, ffmpeg)."
 apt-get -qq update
-apt-get install -yqq python3 python3-pip ffmpeg
+apt-get install -yqq python3 python3-venv ffmpeg
 
-log "Upgrading pip and installing faster-whisper + huggingface_hub."
-python3 -m pip install --upgrade --no-cache-dir pip
-python3 -m pip install --no-cache-dir faster-whisper "huggingface_hub>=0.22"
+log "Creating an isolated virtual environment at ${VENV_DIR}."
+python3 -m venv "${VENV_DIR}"
+
+log "Upgrading pip and installing faster-whisper + huggingface_hub inside the virtual environment."
+"${PYTHON_BIN}" -m pip install --upgrade --no-cache-dir pip
+"${PYTHON_BIN}" -m pip install --no-cache-dir faster-whisper "huggingface_hub>=0.22"
 
 log "Downloading model '${MODEL_REPO}' to ${MODEL_DIR}. This may take a while..."
-python3 - <<PY
+MODEL_DIR="${MODEL_DIR}" MODEL_REPO="${MODEL_REPO}" "${PYTHON_BIN}" - <<PY
 import os
 from huggingface_hub import snapshot_download
 
 model_dir = os.environ.get("MODEL_DIR", "${MODEL_DIR}")
 os.makedirs(model_dir, exist_ok=True)
 print(f"[faster-whisper] Downloading or updating model into {model_dir}")
-snapshot_download(repo_id="${MODEL_REPO}", local_dir=model_dir, local_dir_use_symlinks=False)
+snapshot_download(repo_id=os.environ.get("MODEL_REPO", "${MODEL_REPO}"), local_dir=model_dir, local_dir_use_symlinks=False)
 print(f"[faster-whisper] Model ready at {model_dir}")
 PY
 
