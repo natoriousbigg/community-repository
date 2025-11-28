@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------------------------------
 # Name: faster-whisper
-# Description: Installs faster-whisper with the distil-large-v3 model for language detection and transcription.
+# Description: Installs faster-whisper with the small model for language detection and transcription.
 # Author: OpenAI-Assistant
 # Revision: 1
 # Icon: fas fa-wave-square:#17A2B8
@@ -13,8 +13,8 @@ log(){
     echo "[faster-whisper] $1"
 }
 
-MODEL_REPO="distil-whisper/distil-large-v3"
-MODEL_DIR="/app/data/faster-whisper/models/distil-large-v3"
+MODEL_REPO="Systran/faster-whisper-small"
+MODEL_DIR="/app/data/faster-whisper/models/faster-whisper-small"
 VENV_DIR="/app/data/faster-whisper/venv"
 PYTHON_BIN="${VENV_DIR}/bin/python"
 
@@ -30,15 +30,21 @@ if [[ "${1:-}" == "--uninstall" ]]; then
     exit 0
 fi
 
+log "Starting faster-whisper setup using model '${MODEL_REPO}'."
+
 log "Ensuring system dependencies are installed (python3, python3-venv, ffmpeg)."
+log "Updating apt package index..."
 apt-get -qq update
+log "Installing required system packages..."
 apt-get install -yqq python3 python3-venv ffmpeg
 
 log "Creating an isolated virtual environment at ${VENV_DIR}."
 python3 -m venv "${VENV_DIR}"
 
-log "Upgrading pip and installing faster-whisper + huggingface_hub inside the virtual environment."
+log "Upgrading pip inside the virtual environment."
 "${PYTHON_BIN}" -m pip install --upgrade --no-cache-dir pip
+
+log "Installing faster-whisper and huggingface_hub (this may take a minute)..."
 "${PYTHON_BIN}" -m pip install --no-cache-dir faster-whisper "huggingface_hub>=0.22"
 
 log "Downloading model '${MODEL_REPO}' to ${MODEL_DIR}. This may take a while..."
