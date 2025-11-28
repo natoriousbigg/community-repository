@@ -3,7 +3,7 @@
  * @uid 1a6d8f4b-1fcd-4db1-b534-44a3d4f72e5b
  * @description Samples each audio track and uses faster-whisper (distil-large-v3) to populate and standardize language codes.
  * @author OpenAI-Assistant
- * @revision 1
+ * @revision 3
  * @param {string} device Device to run faster-whisper on (e.g. cpu, cuda, auto). Leave blank to default to cpu.
  * @param {string} compute_type Compute type for faster-whisper (e.g. int8, float16). Leave blank to default to int8.
  * @output Languages updated
@@ -42,15 +42,36 @@ function Script(device, compute_type) {
         return 2;
     }
 
-    const ffmpeg = Flow.GetToolPath('ffmpeg');
-    if (!ffmpeg) {
-        Logger.ELog('[faster-whisper] FFmpeg not found.');
-        return -1;
-    }
-
+    const python = Flow.GetToolPath('python3') || 'python3';
     const resolvedDevice = (device && device.trim().length > 0) ? device.trim() : 'cpu';
     const resolvedCompute = (compute_type && compute_type.trim().length > 0) ? compute_type.trim() : 'int8';
     const modelDir = '/app/data/faster-whisper/models/distil-large-v3';
+
+    const verifyPython = Flow.Execute({
+        command: python,
+        argumentList: ['-c', 'import importlib.util, sys\nmissing = [m for m in ("faster_whisper", "av") if importlib.util.find_spec(m) is None]\nprint(",".join(missing))\nsys.exit(len(missing))'],
+        logOutput: false
+    });
+
+    const missingModules = (verifyPython.output || '').trim();
+
+    if (verifyPython.exitCode !== 0) {
+        Logger.ELog(`[faster-whisper] Missing Python modules: ${missingModules || 'faster_whisper, av'}. Install the FileFlows "faster-whisper" Docker Mod or pip install faster-whisper and PyAV (https://github.com/PyAV-Org/PyAV) which bundles FFmpeg.`);
+        return -1;
+    }
+
+    Logger.ILog('[faster-whisper] Verified python modules faster_whisper and PyAV (av) are available.');
+
+    const ffmpeg = Flow.GetToolPath('ffmpeg');
+    if (!ffmpeg) {
+        Logger.ELog('[faster-whisper] FFmpeg not found. Ensure an ffmpeg binary is available on PATH or install PyAV which bundles FFmpeg components.');
+        return -1;
+    }
+
+    if (!System.IO.Directory.Exists(modelDir)) {
+        Logger.ELog(`[faster-whisper] Model directory '${modelDir}' is missing. Install or re-run the "faster-whisper" Docker Mod to download distil-large-v3.`);
+        return -1;
+    }
 
     Logger.ILog(`[faster-whisper] Using device='${resolvedDevice}' compute_type='${resolvedCompute}'.`);
     Logger.ILog(`[faster-whisper] Model directory: ${modelDir}`);
@@ -149,7 +170,7 @@ function Script(device, compute_type) {
 
         Logger.ILog(`[faster-whisper] Running faster-whisper on track ${i}.`);
         let process = Flow.Execute({
-            command: 'python3',
+            command: python,
             argumentList: ['-c', pythonScript, sampleFile, modelDir, resolvedDevice, resolvedCompute],
             logOutput: true
         });
