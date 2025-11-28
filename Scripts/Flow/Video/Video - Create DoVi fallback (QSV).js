@@ -35,6 +35,7 @@ Variables.NoQSV = true;
 
 var filtered = false;
 var openclInitSet = false;
+var openclInitIndex = -1;
 var filterDeviceSet = false;
 var pixFmtInserted = false;
   var tonemap = "hwupload,tonemap_opencl=format=p010le:p=bt2020:t=smpte2084:m=bt2020:tonemap=bt2390:peak=100:desat=0,hwdownload";
@@ -69,6 +70,7 @@ function reorderCropAfterHwdownload(filterStr) {
 for (let i = 0; i < FFmpeg.Args.length - 1; i++) {
   if (FFmpeg.Args[i] === "-init_hw_device") {
     openclInitSet = true;
+    openclInitIndex = i;
     if (!String(FFmpeg.Args[i + 1]).startsWith("opencl=")) {
       FFmpeg.Args[i + 1] = "opencl=ocl:0";
     }
@@ -101,11 +103,24 @@ for (let i = 0; i < FFmpeg.Args.length - 1; i++) {
 }
 
 if (!filterDeviceSet) {
-  FFmpeg.Args.unshift("-filter_hw_device", "ocl");
+  const insertPos = openclInitIndex >= 0 ? openclInitIndex + 2 : 0;
+  FFmpeg.Args.splice(insertPos, 0, "-filter_hw_device", "ocl");
   filterDeviceSet = true;
 }
 if (!openclInitSet) {
   FFmpeg.Args.unshift("-init_hw_device", "opencl=ocl:0");
+  openclInitIndex = 0;
+  openclInitSet = true;
+}
+
+if (filterDeviceSet && openclInitIndex >= 0) {
+  const existingIdx = FFmpeg.Args.indexOf("-filter_hw_device");
+  if (existingIdx !== -1 && existingIdx !== openclInitIndex + 2) {
+    const deviceArg = FFmpeg.Args[existingIdx + 1];
+    FFmpeg.Args.splice(existingIdx, 2);
+    const targetIdx = openclInitIndex + 2 <= FFmpeg.Args.length ? openclInitIndex + 2 : FFmpeg.Args.length;
+    FFmpeg.Args.splice(targetIdx, 0, "-filter_hw_device", deviceArg || "ocl");
+  }
 }
 
 for (let i = 0; i < FFmpeg.Args.length; i++) {
