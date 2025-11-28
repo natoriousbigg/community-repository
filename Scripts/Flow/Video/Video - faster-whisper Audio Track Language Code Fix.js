@@ -1,7 +1,7 @@
 /**
  * @name Video - faster-whisper Audio Track Language Code Fix
  * @uid 1a6d8f4b-1fcd-4db1-b534-44a3d4f72e5b
- * @description Samples each audio track and uses faster-whisper (distil-large-v3) to populate and standardize language codes.
+ * @description Samples each audio track and uses faster-whisper (small) to populate and standardize language codes.
  * @author OpenAI-Assistant
  * @revision 3
  * @param {string} device Device to run faster-whisper on (e.g. cpu, cuda, auto). Leave blank to default to cpu.
@@ -45,7 +45,7 @@ function Script(device, compute_type) {
     const python = Flow.GetToolPath('python3') || 'python3';
     const resolvedDevice = (device && device.trim().length > 0) ? device.trim() : 'cpu';
     const resolvedCompute = (compute_type && compute_type.trim().length > 0) ? compute_type.trim() : 'int8';
-    const modelDir = '/app/data/faster-whisper/models/distil-large-v3';
+    const modelDir = '/app/data/faster-whisper/models/faster-whisper-small';
 
     const verifyPython = Flow.Execute({
         command: python,
@@ -69,7 +69,7 @@ function Script(device, compute_type) {
     }
 
     if (!System.IO.Directory.Exists(modelDir)) {
-        Logger.ELog(`[faster-whisper] Model directory '${modelDir}' is missing. Install or re-run the "faster-whisper" Docker Mod to download distil-large-v3.`);
+        Logger.ELog(`[faster-whisper] Model directory '${modelDir}' is missing. Install or re-run the "faster-whisper" Docker Mod to download the small model.`);
         return -1;
     }
 
