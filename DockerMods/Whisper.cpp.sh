@@ -15,14 +15,15 @@ log() {
 INSTALL_ROOT="/app/data/whispercpp"
 BIN_DIR="${INSTALL_ROOT}/bin"
 MODEL_DIR="${INSTALL_ROOT}/models"
-BIN_LINK="/usr/local/bin/whispercpp"
+BIN_LINK="/usr/local/bin/whisper-whispercpp"
+BIN_LINK_LEGACY="/usr/local/bin/whispercpp"
 VERSION="1.8.2"
 MODEL_FILE="${MODEL_DIR}/ggml-small.bin"
 MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
 
 if [ "${1:-}" = "--uninstall" ]; then
     log "Uninstall flag detected. Removing whisper.cpp binaries and models..."
-    rm -f "${BIN_LINK}" || true
+    rm -f "${BIN_LINK}" "${BIN_LINK_LEGACY}" || true
     rm -rf "${INSTALL_ROOT}"
     log "Uninstall complete."
     exit 0
@@ -63,12 +64,13 @@ else
     exit 1
 fi
 
-log "Installing binary to ${BIN_DIR}/whispercpp and linking at ${BIN_LINK}."
-install -m 0755 "${binary_path}" "${BIN_DIR}/whispercpp"
-ln -sf "${BIN_DIR}/whispercpp" "${BIN_LINK}"
+log "Installing binary to ${BIN_DIR}/whisper-whispercpp and linking at ${BIN_LINK} (with legacy alias)."
+install -m 0755 "${binary_path}" "${BIN_DIR}/whisper-whispercpp"
+ln -sf "${BIN_DIR}/whisper-whispercpp" "${BIN_LINK}"
+ln -sf "${BIN_DIR}/whisper-whispercpp" "${BIN_LINK_LEGACY}"
 
 log "Downloading default multilingual model to ${MODEL_FILE}."
 curl -L "${MODEL_URL}" -o "${MODEL_FILE}"
 
-log "whisper.cpp installation complete. Use 'whispercpp -f <audio.wav> -m ${MODEL_FILE}' to transcribe."
+log "whisper.cpp installation complete. Use 'whisper-whispercpp -f <audio.wav> -m ${MODEL_FILE}' to transcribe. (Legacy alias: whispercpp)"
 exit 0
