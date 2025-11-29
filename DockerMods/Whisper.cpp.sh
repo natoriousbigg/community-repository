@@ -1,4 +1,3 @@
-#!/bin/sh
 # ----------------------------------------------------------------------------------------------------
 # Name: Whisper.cpp
 # Description: Installs the whisper.cpp CPU-only binary and downloads the ggml-small model (multilingual).
@@ -6,6 +5,8 @@
 # Revision: 6
 # Icon: fas fa-microphone-lines:#007BFF
 # ----------------------------------------------------------------------------------------------------
+
+#!/bin/bash
 set -eu
 
 log() {
