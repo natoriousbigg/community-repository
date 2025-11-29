@@ -1,14 +1,14 @@
-#!/bin/bash
+#!/bin/sh
 # ----------------------------------------------------------------------------------------------------
 # Name: Whisper.cpp
 # Description: Installs the whisper.cpp CPU-only binary and downloads the ggml-base.en model.
 # Author: OpenAI-Assistant
-# Revision: 1
+# Revision: 2
 # Icon: fas fa-microphone-lines:#007BFF
 # ----------------------------------------------------------------------------------------------------
-set -euo pipefail
+set -eu
 
-log(){
+log() {
     echo "[whisper.cpp] $1"
 }
 
@@ -20,7 +20,7 @@ VERSION="1.8.2"
 MODEL_FILE="${MODEL_DIR}/ggml-base.en.bin"
 MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
 
-if [[ "${1:-}" == "--uninstall" ]]; then
+if [ "${1:-}" = "--uninstall" ]; then
     log "Uninstall flag detected. Removing whisper.cpp binaries and models..."
     rm -f "${BIN_LINK}" || true
     rm -rf "${INSTALL_ROOT}"
@@ -42,8 +42,6 @@ case "$(uname -m)" in
         ;;
 esac
 
-# Official release assets include prebuilt Linux binaries for x64 and aarch64; no local
-# compilation is required unless the asset is missing or the download fails.
 BUNDLE_URL="https://github.com/ggerganov/whisper.cpp/releases/download/v${VERSION}/whisper.cpp-linux-${ARCH_TAG}.zip"
 
 log "Installing required system packages (curl, unzip, ffmpeg, ca-certificates)."
@@ -55,7 +53,7 @@ mkdir -p "${BIN_DIR}" "${MODEL_DIR}"
 
 log "Downloading whisper.cpp v${VERSION} prebuilt binary for ${ARCH_TAG}."
 tmp_dir="$(mktemp -d)"
-trap 'rm -rf "${tmp_dir}"' EXIT
+trap 'rm -rf "$tmp_dir"' EXIT
 if ! curl -fL "${BUNDLE_URL}" -o "${tmp_dir}/whisper.zip"; then
     log "Failed to download ${BUNDLE_URL}. The release may not provide a prebuilt binary for ${ARCH_TAG} or the network is unreachable."
     log "If the asset is unavailable, build from source: https://github.com/ggerganov/whisper.cpp#build"
@@ -65,8 +63,8 @@ fi
 log "Extracting whisper.cpp bundle."
 unzip -q "${tmp_dir}/whisper.zip" -d "${tmp_dir}/unpacked"
 
-binary_path="$(find "${tmp_dir}/unpacked" -maxdepth 2 -type f -name main | head -n 1)"
-if [[ -z "${binary_path}" ]]; then
+binary_path=$(find "${tmp_dir}/unpacked" -maxdepth 2 -type f -name main | head -n 1)
+if [ -z "${binary_path}" ]; then
     log "Failed to locate the whisper.cpp 'main' binary in the downloaded bundle."
     exit 1
 fi
