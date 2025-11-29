@@ -3,7 +3,7 @@
  * @uid 08cf6e37-0c77-4c08-b8d3-2794f200882c
  * @description Samples each audio track with whisper-cli to detect the spoken language and normalizes the track language tags (ISO 639-1) without running a full transcription.
  * @author OpenAI-Assistant
- * @revision 4
+ * @revision 5
  * @output Languages updated
  * @output Languages unchanged
  * @output No audio tracks found
@@ -24,15 +24,30 @@ function Script() {
         return 3;
     }
 
-    const whisperCli = Flow.GetToolPath('whisper-cli') || '/usr/local/bin/whisper-cli';
-    if (!System.IO.File.Exists(whisperCli)) {
-        Logger.ELog(`[whisper-cli] whisper-cli not found at '${whisperCli}'. Install the Whisper.cpp DockerMod first.`);
-        return -1;
-    }
+    const isDocker = System.IO.File.Exists('/.dockerenv');
+    const platform = System.Environment.OSVersion?.Platform?.toString?.() || '';
+    const isWindows = platform === 'Win32NT' || platform === 'Win32Windows';
 
-    const modelPath = '/app/data/whispercpp/models/ggml-small.bin';
-    if (!System.IO.File.Exists(modelPath)) {
-        Logger.ELog(`[whisper-cli] Model not found at '${modelPath}'. Install or re-run the Whisper.cpp DockerMod.`);
+    const variableWhisper = (Variables['whisper'] || '').toString().trim();
+    const variableModel = (Variables['whisper-model'] || '').toString().trim();
+    const whisperCli = variableWhisper || Flow.GetToolPath('whisper-cli') || Flow.GetToolPath('whisper') || '/usr/local/bin/whisper-cli';
+    const modelPath = variableModel || '/app/data/whispercpp/models/ggml-small.bin';
+
+    const missing = [];
+    if (!System.IO.File.Exists(whisperCli))
+        missing.push(`binary at '${whisperCli}'`);
+    if (!System.IO.File.Exists(modelPath))
+        missing.push(`model at '${modelPath}'`);
+
+    if (missing.length > 0) {
+        Logger.ELog(`[whisper-cli] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
+        if (isWindows) {
+            Logger.ELog("[whisper-cli] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp/releases/ and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main .");
+        } else if (isDocker) {
+            Logger.ELog('[whisper-cli] Install the Whisper.cpp DockerMod to provision the binary and model.');
+        } else {
+            Logger.ELog("[whisper-cli] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main .");
+        }
         return -1;
     }
 
