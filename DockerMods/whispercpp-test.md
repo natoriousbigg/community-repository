@@ -20,11 +20,12 @@ docker exec -it <fileflows-container> bash -lc "\
   /usr/local/bin/whisper-cli \
     -m /app/data/whispercpp/models/ggml-small.bin \
     -f /tmp/vc1-flipper.wav \
-    -l auto"
+    -l auto \
+    --duration 30"
 ```
 
 - `-l auto` prints `auto-detected language: <lang>` near the top of the logs.
-- No transcription output is generated; the command exits after detecting the language.
+- Whisper.cpp always runs the decode pipeline; `--duration 30` limits work to the first ~30 seconds to keep it focused on language ID instead of full transcription.
 
 ## Notes
 - Replace `<fileflows-container>` with your running FileFlows container name (e.g., `fileflows-node`).
