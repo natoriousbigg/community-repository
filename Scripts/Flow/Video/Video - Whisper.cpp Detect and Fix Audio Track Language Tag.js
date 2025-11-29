@@ -3,7 +3,7 @@
  * @uid 08cf6e37-0c77-4c08-b8d3-2794f200882c
  * @description Samples each audio track with whisper-cli to detect the spoken language and normalizes the track language tags (ISO 639-1) without running a full transcription.
  * @author OpenAI-Assistant
- * @revision 6
+ * @revision 7
  * @output Languages updated
  * @output Languages unchanged
  * @output No audio tracks found
@@ -30,6 +30,10 @@ function Script() {
 
     const variableWhisper = (Variables['whisper'] || '').toString().trim();
     const variableModel = (Variables['whisper-model'] || '').toString().trim();
+    if (!variableWhisper || !variableModel) {
+        Logger.ILog("[whisper-cli] To override defaults, add 'whisper' (binary path) and 'whisper-model' (model path) variables in this node's settings.");
+    }
+
     const whisperCli = variableWhisper || Flow.GetToolPath('whisper-cli') || Flow.GetToolPath('whisper') || '/usr/local/bin/whisper-cli';
     const modelPath = variableModel || '/app/data/whispercpp/models/ggml-small.bin';
 
