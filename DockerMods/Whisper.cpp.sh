@@ -3,7 +3,7 @@
 # Name: Whisper.cpp
 # Description: Installs the whisper.cpp CPU-only binary and downloads the ggml-base.en model.
 # Author: OpenAI-Assistant
-# Revision: 2
+# Revision: 3
 # Icon: fas fa-microphone-lines:#007BFF
 # ----------------------------------------------------------------------------------------------------
 set -eu
@@ -44,9 +44,9 @@ esac
 
 BUNDLE_URL="https://github.com/ggerganov/whisper.cpp/releases/download/v${VERSION}/whisper.cpp-linux-${ARCH_TAG}.zip"
 
-log "Installing required system packages (curl, unzip, ffmpeg, ca-certificates)."
+log "Installing required system packages (curl, unzip, ffmpeg, ca-certificates, git, build-essential, cmake)."
 apt-get -qq update
-apt-get install -yqq curl unzip ffmpeg ca-certificates
+apt-get install -yqq curl unzip ffmpeg ca-certificates git build-essential cmake
 
 log "Preparing directories under ${INSTALL_ROOT}."
 mkdir -p "${BIN_DIR}" "${MODEL_DIR}"
@@ -54,19 +54,33 @@ mkdir -p "${BIN_DIR}" "${MODEL_DIR}"
 log "Downloading whisper.cpp v${VERSION} prebuilt binary for ${ARCH_TAG}."
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
-if ! curl -fL "${BUNDLE_URL}" -o "${tmp_dir}/whisper.zip"; then
-    log "Failed to download ${BUNDLE_URL}. The release may not provide a prebuilt binary for ${ARCH_TAG} or the network is unreachable."
-    log "If the asset is unavailable, build from source: https://github.com/ggerganov/whisper.cpp#build"
-    exit 1
+binary_path=""
+if curl -fL "${BUNDLE_URL}" -o "${tmp_dir}/whisper.zip"; then
+    log "Extracting whisper.cpp bundle."
+    unzip -q "${tmp_dir}/whisper.zip" -d "${tmp_dir}/unpacked"
+    binary_path=$(find "${tmp_dir}/unpacked" -maxdepth 2 -type f -name main | head -n 1)
+    if [ -z "${binary_path}" ]; then
+        log "Failed to locate the whisper.cpp 'main' binary in the downloaded bundle. Falling back to source build."
+    fi
+else
+    log "Failed to download ${BUNDLE_URL}. Falling back to source build."
 fi
 
-log "Extracting whisper.cpp bundle."
-unzip -q "${tmp_dir}/whisper.zip" -d "${tmp_dir}/unpacked"
-
-binary_path=$(find "${tmp_dir}/unpacked" -maxdepth 2 -type f -name main | head -n 1)
 if [ -z "${binary_path}" ]; then
-    log "Failed to locate the whisper.cpp 'main' binary in the downloaded bundle."
-    exit 1
+    SRC_DIR="/tmp/whisper.cpp-src"
+    BUILD_DIR="${SRC_DIR}/build"
+    log "Cloning whisper.cpp v${VERSION} into ${SRC_DIR}."
+    rm -rf "${SRC_DIR}"
+    git clone --depth 1 --branch "v${VERSION}" https://github.com/ggerganov/whisper.cpp.git "${SRC_DIR}"
+    log "Building whisper.cpp from source."
+    mkdir -p "${BUILD_DIR}"
+    (cd "${BUILD_DIR}" && cmake -DCMAKE_BUILD_TYPE=Release .. && make -j "$(getconf _NPROCESSORS_ONLN)")
+    binary_path="${BUILD_DIR}/bin/main"
+    if [ ! -x "${binary_path}" ]; then
+        log "Source build did not produce an executable at ${binary_path}."
+        exit 1
+    fi
+    rm -rf "${SRC_DIR}"
 fi
 
 log "Installing binary to ${BIN_DIR}/whispercpp and linking at ${BIN_LINK}."
