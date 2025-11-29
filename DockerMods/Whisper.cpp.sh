@@ -2,7 +2,7 @@
 # Name: Whisper.cpp
 # Description: Installs the whisper.cpp CPU-only binary and downloads the ggml-small model (multilingual).
 # Author: OpenAI-Assistant
-# Revision: 7
+# Revision: 8
 # Icon: https://meta-l.cdn.bubble.io/cdn-cgi/image/w=64,h=64,f=auto,dpr=2,fit=contain/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -30,9 +30,9 @@ if [ "${1:-}" = "--uninstall" ]; then
     exit 0
 fi
 
-log "Installing required system packages (curl, ffmpeg, ca-certificates, git, build-essential, pkg-config, cmake)."
+log "Installing required system packages (curl, ca-certificates, git, build-essential, pkg-config, cmake)."
 apt-get -qq update
-apt-get install -yqq curl ffmpeg ca-certificates git build-essential pkg-config cmake
+apt-get install -yqq curl ca-certificates git build-essential pkg-config cmake
 
 log "Preparing directories under ${INSTALL_ROOT}."
 mkdir -p "${BIN_DIR}" "${MODEL_DIR}"
