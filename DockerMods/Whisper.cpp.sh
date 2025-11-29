@@ -40,15 +40,22 @@ binary_path=""
 build_dir="/tmp/whisper.cpp"
 rm -rf "${build_dir}"
 if git clone --branch "v${VERSION}" --depth 1 https://github.com/ggerganov/whisper.cpp "${build_dir}"; then
-    if make -C "${build_dir}" -j"$(nproc)"; then
-        if [ -x "${build_dir}/main" ]; then
-            binary_path="${build_dir}/main"
+    if cmake -S "${build_dir}" -B "${build_dir}/build" -DCMAKE_BUILD_TYPE=Release; then
+        if cmake --build "${build_dir}/build" -- -j"$(nproc)"; then
+            if [ -x "${build_dir}/build/bin/main" ]; then
+                binary_path="${build_dir}/build/bin/main"
+            elif [ -x "${build_dir}/main" ]; then
+                binary_path="${build_dir}/main"
+            else
+                log "Source build completed but 'main' binary not found in expected locations."
+                exit 1
+            fi
         else
-            log "Source build completed but 'main' binary not found at ${build_dir}/main."
+            log "Building whisper.cpp from source failed."
             exit 1
         fi
     else
-        log "Building whisper.cpp from source failed."
+        log "Configuring whisper.cpp with CMake failed."
         exit 1
     fi
 else
