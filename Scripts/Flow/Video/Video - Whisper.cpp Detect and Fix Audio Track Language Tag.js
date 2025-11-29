@@ -3,7 +3,7 @@
  * @uid 08cf6e37-0c77-4c08-b8d3-2794f200882c
  * @description Samples each audio track with whisper-cli to detect the spoken language and normalizes the track language tags (ISO 639-1) without running a full transcription.
  * @author OpenAI-Assistant
- * @revision 7
+ * @revision 8
  * @output Languages updated
  * @output Languages unchanged
  * @output No audio tracks found
@@ -30,9 +30,8 @@ function Script() {
 
     const variableWhisper = (Variables['whisper'] || '').toString().trim();
     const variableModel = (Variables['whisper-model'] || '').toString().trim();
-    if (!variableWhisper || !variableModel) {
+    if (!variableWhisper || !variableModel)
         Logger.ILog("[whisper-cli] To override defaults, add 'whisper' (binary path) and 'whisper-model' (model path) variables in this node's settings.");
-    }
 
     const whisperCli = variableWhisper || Flow.GetToolPath('whisper-cli') || Flow.GetToolPath('whisper') || '/usr/local/bin/whisper-cli';
     const modelPath = variableModel || '/app/data/whispercpp/models/ggml-small.bin';
@@ -46,13 +45,13 @@ function Script() {
     if (missing.length > 0) {
         Logger.ELog(`[whisper-cli] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
         if (isWindows) {
-            Logger.ELog("[whisper-cli] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp/releases/ and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main .");
+            Logger.ELog("[whisper-cli] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp/releases/ and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main, then set 'whisper' (binary) and 'whisper-model' (model) variables in this node's settings.");
         } else if (isDocker) {
             Logger.ELog('[whisper-cli] Install the Whisper.cpp DockerMod to provision the binary and model.');
         } else {
-            Logger.ELog("[whisper-cli] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main .");
+            Logger.ELog("[whisper-cli] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main, then set 'whisper' (binary) and 'whisper-model' (model) variables in this node's settings.");
         }
-        return -1;
+        return Flow.Fail('Whisper.cpp and/or model missing, please install');
     }
 
     const durationSeconds = vi?.Duration?.TotalSeconds || vi?.VideoStreams?.[0]?.Duration?.TotalSeconds || 0;
