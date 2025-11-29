@@ -48,7 +48,7 @@ function Script() {
         } else {
             Logger.ELog("[whisper-cli] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main, then set 'whisper' (binary) and 'whisper-model' (model) variables in this node's settings.");
         }
-        return Flow.Fail('Whisper.cpp and/or model missing, please install');
+        return Flow.Fail('Whisper.cpp and/or model missing, please install and set variables');
     }
 
     const durationSeconds = vi?.Duration?.TotalSeconds || vi?.VideoStreams?.[0]?.Duration?.TotalSeconds || 0;
