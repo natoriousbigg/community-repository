@@ -2,8 +2,8 @@
 # Name: Whisper.cpp
 # Description: Installs the whisper.cpp CPU-only binary and downloads the ggml-small model (multilingual).
 # Author: OpenAI-Assistant
-# Revision: 6
-# Icon: fas fa-microphone-lines:#007BFF
+# Revision: 7
+# Icon: https://meta-l.cdn.bubble.io/cdn-cgi/image/w=64,h=64,f=auto,dpr=2,fit=contain/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
 #!/bin/bash
