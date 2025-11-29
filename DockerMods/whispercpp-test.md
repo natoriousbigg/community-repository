@@ -13,20 +13,18 @@ docker exec -it <fileflows-container> bash -lc "\
 - Converts the first audio track to PCM WAV for Whisper.
 - Adjust `-map 0:a:0` if you need a different audio stream.
 
-## 2) Detect language and transcribe a short segment
+## 2) Detect language only
 
 ```bash
 docker exec -it <fileflows-container> bash -lc "\
   /usr/local/bin/whisper-cli \
     -m /app/data/whispercpp/models/ggml-small.bin \
     -f /tmp/vc1-flipper.wav \
-    -l auto \
-    -otxt \
-    -of /tmp/vc1-flipper-sample"
+    -l auto"
 ```
 
 - `-l auto` prints `auto-detected language: <lang>` near the top of the logs.
-- Outputs `/tmp/vc1-flipper-sample.txt` inside the container with the transcription.
+- No transcription output is generated; the command exits after detecting the language.
 
 ## Notes
 - Replace `<fileflows-container>` with your running FileFlows container name (e.g., `fileflows-node`).
