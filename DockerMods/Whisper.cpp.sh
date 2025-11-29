@@ -3,7 +3,7 @@
 # Name: Whisper.cpp
 # Description: Installs the whisper.cpp CPU-only binary and downloads the ggml-base.en model.
 # Author: OpenAI-Assistant
-# Revision: 3
+# Revision: 4
 # Icon: fas fa-microphone-lines:#007BFF
 # ----------------------------------------------------------------------------------------------------
 set -eu
@@ -44,9 +44,9 @@ esac
 
 BUNDLE_URL="https://github.com/ggerganov/whisper.cpp/releases/download/v${VERSION}/whisper.cpp-linux-${ARCH_TAG}.zip"
 
-log "Installing required system packages (curl, unzip, ffmpeg, ca-certificates, git, build-essential, cmake)."
+log "Installing required system packages (curl, unzip, ffmpeg, ca-certificates, snapd)."
 apt-get -qq update
-apt-get install -yqq curl unzip ffmpeg ca-certificates git build-essential cmake
+apt-get install -yqq curl unzip ffmpeg ca-certificates snapd
 
 log "Preparing directories under ${INSTALL_ROOT}."
 mkdir -p "${BIN_DIR}" "${MODEL_DIR}"
@@ -60,27 +60,31 @@ if curl -fL "${BUNDLE_URL}" -o "${tmp_dir}/whisper.zip"; then
     unzip -q "${tmp_dir}/whisper.zip" -d "${tmp_dir}/unpacked"
     binary_path=$(find "${tmp_dir}/unpacked" -maxdepth 2 -type f -name main | head -n 1)
     if [ -z "${binary_path}" ]; then
-        log "Failed to locate the whisper.cpp 'main' binary in the downloaded bundle. Falling back to source build."
+        log "Failed to locate the whisper.cpp 'main' binary in the downloaded bundle. Falling back to snap install."
     fi
 else
-    log "Failed to download ${BUNDLE_URL}. Falling back to source build."
+    log "Failed to download ${BUNDLE_URL}. Falling back to snap install."
 fi
 
 if [ -z "${binary_path}" ]; then
-    SRC_DIR="/tmp/whisper.cpp-src"
-    BUILD_DIR="${SRC_DIR}/build"
-    log "Cloning whisper.cpp v${VERSION} into ${SRC_DIR}."
-    rm -rf "${SRC_DIR}"
-    git clone --depth 1 --branch "v${VERSION}" https://github.com/ggerganov/whisper.cpp.git "${SRC_DIR}"
-    log "Building whisper.cpp from source."
-    mkdir -p "${BUILD_DIR}"
-    (cd "${BUILD_DIR}" && cmake -DCMAKE_BUILD_TYPE=Release .. && make -j "$(getconf _NPROCESSORS_ONLN)")
-    binary_path="${BUILD_DIR}/bin/main"
-    if [ ! -x "${binary_path}" ]; then
-        log "Source build did not produce an executable at ${binary_path}."
+    log "Attempting to install whisper-cpp via snap (https://snapcraft.io/whisper-cpp)."
+    if ! command -v snap >/dev/null 2>&1; then
+        log "snap command not available even after installing snapd. Ensure snapd is supported in this environment."
         exit 1
     fi
-    rm -rf "${SRC_DIR}"
+
+    if ! snap list 2>/dev/null | awk '/^whisper-cpp / {found=1} END {exit !found}'; then
+        snap install whisper-cpp || {
+            log "snap install whisper-cpp failed. Ensure snapd is running and this environment supports snaps."
+            exit 1
+        }
+    fi
+
+    binary_path="/snap/bin/whisper-cpp"
+    if [ ! -x "${binary_path}" ]; then
+        log "Snap installation completed but ${binary_path} is not executable."
+        exit 1
+    fi
 fi
 
 log "Installing binary to ${BIN_DIR}/whispercpp and linking at ${BIN_LINK}."
