@@ -33,39 +33,12 @@ function Script(VaapiDevice) {
     ? `
 Variables.NoQSV = true;
 
-var filtered = false;
-var openclInitSet = false;
-var openclInitIndex = -1;
-var filterDeviceSet = false;
-var pixFmtInserted = false;
-  var tonemap = "hwupload,tonemap_opencl=format=p010le:p=bt2020:t=smpte2084:m=bt2020:tonemap=bt2390:peak=100:desat=0,hwdownload";
-
-function convertVppCropToCpu(filterStr) {
-  if (typeof filterStr !== "string") return filterStr;
-
-  // vpp_qsv=cw=3840:ch=2076:cx=0:cy=42 -> crop=3840:2076:0:42
-  return filterStr.replace(/vpp_qsv=cw=([0-9]+):ch=([0-9]+):cx=([0-9]+):cy=([0-9]+)/g, "crop=$1:$2:$3:$4");
-}
-
-function reorderCropAfterHwdownload(filterStr) {
-  if (typeof filterStr !== "string" || !filterStr.trim()) return "";
-
-  var parts = filterStr.split(",").map(function (p) { return p.trim(); }).filter(Boolean);
-  var crops = [];
-  var others = [];
-
-  for (var idx = 0; idx < parts.length; idx++) {
-    var part = parts[idx];
-    if (part.startsWith("crop=")) {
-      crops.push(part);
-    } else {
-      others.push(part);
-    }
-  }
-
-  if (!crops.length) return others.join(",");
-  return crops.join(",") + (others.length ? "," + others.join(",") : "");
-}
+  var filtered = false;
+  var openclInitSet = false;
+  var openclInitIndex = -1;
+  var filterDeviceSet = false;
+  var pixFmtInserted = false;
+    var tonemap = "hwmap=derive_device=opencl,tonemap_opencl=format=p010le:p=bt2020:t=smpte2084:m=bt2020:tonemap=bt2390:peak=100:desat=0,hwmap=derive_device=qsv:reverse=1:extra_hw_frames=64,format=qsv";
 
 for (let i = 0; i < FFmpeg.Args.length - 1; i++) {
   if (FFmpeg.Args[i] === "-init_hw_device") {
@@ -93,14 +66,12 @@ for (let i = 0; i < FFmpeg.Args.length - 1; i++) {
     continue;
   }
 
-  if (FFmpeg.Args[i] === "-filter:v:0") {
-    filtered = true;
-    let existing = FFmpeg.Args[i + 1] || "";
-    existing = convertVppCropToCpu(existing);
-    const reordered = reorderCropAfterHwdownload(existing);
-    FFmpeg.Args[i + 1] = tonemap + (reordered ? "," + reordered : "");
+    if (FFmpeg.Args[i] === "-filter:v:0") {
+      filtered = true;
+      let existing = FFmpeg.Args[i + 1] || "";
+      FFmpeg.Args[i + 1] = tonemap + (existing ? "," + existing : "");
+    }
   }
-}
 
 if (!filterDeviceSet) {
   const insertPos = openclInitIndex >= 0 ? openclInitIndex + 2 : 0;
