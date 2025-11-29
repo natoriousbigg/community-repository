@@ -1,7 +1,7 @@
 #!/bin/sh
 # ----------------------------------------------------------------------------------------------------
 # Name: Whisper.cpp
-# Description: Installs the whisper.cpp CPU-only binary and downloads the ggml-base.en model.
+# Description: Installs the whisper.cpp CPU-only binary and downloads the ggml-small model (multilingual).
 # Author: OpenAI-Assistant
 # Revision: 5
 # Icon: fas fa-microphone-lines:#007BFF
@@ -17,8 +17,8 @@ BIN_DIR="${INSTALL_ROOT}/bin"
 MODEL_DIR="${INSTALL_ROOT}/models"
 BIN_LINK="/usr/local/bin/whispercpp"
 VERSION="1.8.2"
-MODEL_FILE="${MODEL_DIR}/ggml-base.en.bin"
-MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
+MODEL_FILE="${MODEL_DIR}/ggml-small.bin"
+MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
 
 if [ "${1:-}" = "--uninstall" ]; then
     log "Uninstall flag detected. Removing whisper.cpp binaries and models..."
@@ -92,7 +92,7 @@ log "Installing binary to ${BIN_DIR}/whispercpp and linking at ${BIN_LINK}."
 install -m 0755 "${binary_path}" "${BIN_DIR}/whispercpp"
 ln -sf "${BIN_DIR}/whispercpp" "${BIN_LINK}"
 
-log "Downloading default model to ${MODEL_FILE}."
+log "Downloading default multilingual model to ${MODEL_FILE}."
 curl -L "${MODEL_URL}" -o "${MODEL_FILE}"
 
 log "whisper.cpp installation complete. Use 'whispercpp -f <audio.wav> -m ${MODEL_FILE}' to transcribe."
