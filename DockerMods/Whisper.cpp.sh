@@ -15,7 +15,7 @@ log() {
 INSTALL_ROOT="/app/data/whispercpp"
 BIN_DIR="${INSTALL_ROOT}/bin"
 MODEL_DIR="${INSTALL_ROOT}/models"
-BIN_LINK="/usr/local/bin/whisper-whispercpp"
+BIN_LINK="/usr/local/bin/whisper-cli"
 BIN_LINK_LEGACY="/usr/local/bin/whispercpp"
 VERSION="1.8.2"
 MODEL_FILE="${MODEL_DIR}/ggml-small.bin"
@@ -43,12 +43,12 @@ rm -rf "${build_dir}"
 if git clone --branch "v${VERSION}" --depth 1 https://github.com/ggerganov/whisper.cpp "${build_dir}"; then
     if cmake -S "${build_dir}" -B "${build_dir}/build" -DCMAKE_BUILD_TYPE=Release; then
         if cmake --build "${build_dir}/build" -- -j"$(nproc)"; then
-            if [ -x "${build_dir}/build/bin/main" ]; then
-                binary_path="${build_dir}/build/bin/main"
-            elif [ -x "${build_dir}/main" ]; then
-                binary_path="${build_dir}/main"
+            if [ -x "${build_dir}/build/bin/whisper-cli" ]; then
+                binary_path="${build_dir}/build/bin/whisper-cli"
+            elif [ -x "${build_dir}/whisper-cli" ]; then
+                binary_path="${build_dir}/whisper-cli"
             else
-                log "Source build completed but 'main' binary not found in expected locations."
+                log "Source build completed but 'whisper-cli' binary not found in expected locations."
                 exit 1
             fi
         else
@@ -64,13 +64,13 @@ else
     exit 1
 fi
 
-log "Installing binary to ${BIN_DIR}/whisper-whispercpp and linking at ${BIN_LINK} (with legacy alias)."
-install -m 0755 "${binary_path}" "${BIN_DIR}/whisper-whispercpp"
-ln -sf "${BIN_DIR}/whisper-whispercpp" "${BIN_LINK}"
-ln -sf "${BIN_DIR}/whisper-whispercpp" "${BIN_LINK_LEGACY}"
+log "Installing binary to ${BIN_DIR}/whisper-cli and linking at ${BIN_LINK} (with legacy alias)."
+install -m 0755 "${binary_path}" "${BIN_DIR}/whisper-cli"
+ln -sf "${BIN_DIR}/whisper-cli" "${BIN_LINK}"
+ln -sf "${BIN_DIR}/whisper-cli" "${BIN_LINK_LEGACY}"
 
 log "Downloading default multilingual model to ${MODEL_FILE}."
 curl -L "${MODEL_URL}" -o "${MODEL_FILE}"
 
-log "whisper.cpp installation complete. Use 'whisper-whispercpp -f <audio.wav> -m ${MODEL_FILE}' to transcribe. (Legacy alias: whispercpp)"
+log "whisper.cpp installation complete. Use 'whisper-cli -f <audio.wav> -m ${MODEL_FILE}' to transcribe. (Legacy alias: whispercpp)"
 exit 0

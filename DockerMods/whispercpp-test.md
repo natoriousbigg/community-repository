@@ -17,7 +17,7 @@ docker exec -it <fileflows-container> bash -lc "\
 
 ```bash
 docker exec -it <fileflows-container> bash -lc "\
-  /usr/local/bin/whisper-whispercpp \
+  /usr/local/bin/whisper-cli \
     -m /app/data/whispercpp/models/ggml-small.bin \
     -f /tmp/vc1-flipper.wav \
     -l auto \
@@ -33,4 +33,4 @@ docker exec -it <fileflows-container> bash -lc "\
 ## Notes
 - Replace `<fileflows-container>` with your running FileFlows container name (e.g., `fileflows-node`).
 - Run the commands from the host that can access the container via Docker.
-- Both commands rely on the install locations defined by the Whisper.cpp DockerMod: `/usr/local/bin/whisper-whispercpp` (with a legacy alias at `/usr/local/bin/whispercpp`) and `/app/data/whispercpp/models/ggml-small.bin`.
+- Both commands rely on the install locations defined by the Whisper.cpp DockerMod: `/usr/local/bin/whisper-cli` (with a legacy alias at `/usr/local/bin/whispercpp`) and `/app/data/whispercpp/models/ggml-small.bin`.
