@@ -2,8 +2,9 @@
  * @name Video - Create DoVi fallback (QSV)
  * @description Tonemaps DoVi without a fallback to HDR (QSV + opencl)
  * @help Put me before ffmpeg execute, supports Linux (VAAPI) and Windows (d3d11va)
+ * @note Rev 23: only the Windows fallback argument builder was adjusted; Linux behavior is unchanged.
  * @author lawrence
- * @revision 22
+ * @revision 23
  * @param {string} VaapiDevice Optional VAAPI device path (e.g. /dev/dri/renderD128)
  * @output Setup DoVi tonemapping
  * @output Did nothing
@@ -35,10 +36,8 @@ Variables.NoQSV = true;
 
   var filtered = false;
   var openclInitSet = false;
-  var openclInitIndex = -1;
   var d3dInitSet = false;
   var qsvInitSet = false;
-  var filterDeviceSet = false;
     var tonemap = "hwmap=derive_device=opencl,tonemap_opencl=format=p010le:p=bt2020:t=smpte2084:m=bt2020:tonemap=bt2390:peak=100:desat=0,hwmap=derive_device=qsv:reverse=1:extra_hw_frames=64,format=qsv";
 
 for (let i = 0; i < FFmpeg.Args.length - 1; i++) {
@@ -46,7 +45,6 @@ for (let i = 0; i < FFmpeg.Args.length - 1; i++) {
     const initVal = String(FFmpeg.Args[i + 1] || "");
     if (initVal.startsWith("opencl=")) {
       openclInitSet = true;
-      openclInitIndex = i;
       FFmpeg.Args[i + 1] = "opencl=ocl:0";
     } else if (initVal.startsWith("qsv=")) {
       qsvInitSet = true;
@@ -55,10 +53,6 @@ for (let i = 0; i < FFmpeg.Args.length - 1; i++) {
       d3dInitSet = true;
       FFmpeg.Args[i + 1] = "d3d11va=d3d11";
     }
-  }
-  if (FFmpeg.Args[i] === "-filter_hw_device") {
-    filterDeviceSet = true;
-    FFmpeg.Args[i + 1] = "ocl";
   }
   if (FFmpeg.Args[i] === "-hwaccel") {
     FFmpeg.Args[i + 1] = "d3d11va";
@@ -85,7 +79,6 @@ if (!d3dInitSet) {
   FFmpeg.Args.unshift("-init_hw_device", "d3d11va=d3d11");
   d3dInitSet = true;
 }
-openclInitIndex = FFmpeg.Args.findIndex((arg, idx) => arg === "-init_hw_device" && String(FFmpeg.Args[idx + 1] || "").startsWith("opencl="));
 if (!FFmpeg.Args.includes("-hwaccel_output_format")) {
   const accelIdx = FFmpeg.Args.indexOf("-hwaccel");
   if (accelIdx !== -1) {
@@ -94,29 +87,10 @@ if (!FFmpeg.Args.includes("-hwaccel_output_format")) {
     FFmpeg.Args.unshift("-hwaccel", "d3d11va", "-hwaccel_output_format", "d3d11");
   }
 }
-if (!filterDeviceSet) {
-  const insertPos = openclInitIndex >= 0 ? openclInitIndex + 2 : 0;
-  FFmpeg.Args.splice(insertPos, 0, "-filter_hw_device", "ocl");
-  filterDeviceSet = true;
-}
-
-if (filterDeviceSet && openclInitIndex >= 0) {
-  const existingIdx = FFmpeg.Args.indexOf("-filter_hw_device");
-  if (existingIdx !== -1 && existingIdx !== openclInitIndex + 2) {
-    const deviceArg = FFmpeg.Args[existingIdx + 1];
-    FFmpeg.Args.splice(existingIdx, 2);
-    const targetIdx = openclInitIndex + 2 <= FFmpeg.Args.length ? openclInitIndex + 2 : FFmpeg.Args.length;
-    FFmpeg.Args.splice(targetIdx, 0, "-filter_hw_device", deviceArg || "ocl");
-  }
-}
-
 if (!filtered) {
   for (let i = 0; i < FFmpeg.Args.length - 1; i++) {
     if (FFmpeg.Args[i] === "0:v:0") {
       FFmpeg.Args.splice(i + 1, 0, "-filter:v:0", tonemap);
-      if (!filterDeviceSet) {
-        FFmpeg.Args.splice(i + 3, 0, "-filter_hw_device", "ocl");
-      }
       break;
     }
   }
