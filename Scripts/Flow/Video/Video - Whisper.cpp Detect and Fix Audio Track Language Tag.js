@@ -30,9 +30,6 @@ function Script() {
 
     const variableWhisper = (Variables['whisper'] || '').toString().trim();
     const variableModel = (Variables['whisper-model'] || '').toString().trim();
-    if (!variableWhisper || !variableModel)
-        Logger.ILog("[whisper-cli] To override defaults, add 'whisper' (binary path) and 'whisper-model' (model path) variables in this node's settings.");
-
     const whisperCli = variableWhisper || Flow.GetToolPath('whisper-cli') || Flow.GetToolPath('whisper') || '/usr/local/bin/whisper-cli';
     const modelPath = variableModel || '/app/data/whispercpp/models/ggml-small.bin';
 
