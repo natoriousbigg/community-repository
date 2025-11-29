@@ -3,7 +3,7 @@
  * @uid 08cf6e37-0c77-4c08-b8d3-2794f200882c
  * @description Samples each audio track with whisper-cli to detect the spoken language and normalizes the track language tags (ISO 639-1) without running a full transcription.
  * @author OpenAI-Assistant
- * @revision 5
+ * @revision 6
  * @output Languages updated
  * @output Languages unchanged
  * @output No audio tracks found
@@ -54,7 +54,6 @@ function Script() {
     const durationSeconds = vi?.Duration?.TotalSeconds || vi?.VideoStreams?.[0]?.Duration?.TotalSeconds || 0;
     const sampleStart = durationSeconds >= 1200 ? 600 : Math.max(0, durationSeconds - 600);
     const sampleLength = Math.min(600, Math.max(60, durationSeconds - sampleStart));
-    const detectDuration = 30; // whisper-cli does not have a pure detect-only mode; limit decode to the first 30s of the sample.
 
     const workingDir = Flow.TempPath || System.IO.Path.GetTempPath();
     let updated = false;
@@ -105,10 +104,10 @@ function Script() {
             continue;
         }
 
-        Logger.ILog(`[whisper-cli] Detecting language for track ${i} using whisper-cli (detection only, processing ~${detectDuration}s).`);
+        Logger.ILog(`[whisper-cli] Detecting language for track ${i} using whisper-cli (detection only).`);
         const process = Flow.Execute({
             command: whisperCli,
-            argumentList: ['-m', modelPath, '-f', sampleFile, '-l', 'auto', '--duration', detectDuration.toString()],
+            argumentList: ['-m', modelPath, '-f', sampleFile, '-l', 'auto', '--detect-language', 'true'],
             logOutput: false
         });
 
