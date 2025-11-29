@@ -22,12 +22,10 @@ docker exec -it <fileflows-container> bash -lc "\
     -f /tmp/vc1-flipper.wav \
     -l auto \
     -otxt \
-    -of /tmp/vc1-flipper-sample \
-    -n 90"
+    -of /tmp/vc1-flipper-sample"
 ```
 
 - `-l auto` prints `auto-detected language: <lang>` near the top of the logs.
-- `-n 90` limits decoding to the first ~90 seconds for a quick check. Omit it to transcribe the full file.
 - Outputs `/tmp/vc1-flipper-sample.txt` inside the container with the transcription.
 
 ## Notes
