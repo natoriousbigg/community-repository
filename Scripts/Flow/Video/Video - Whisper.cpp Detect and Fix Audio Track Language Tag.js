@@ -3,7 +3,7 @@
  * @uid 08cf6e37-0c77-4c08-b8d3-2794f200882c
  * @description Samples each audio track with whisper-cli to detect the spoken language and normalizes the track language tags (ISO 639-1) without running a full transcription.
  * @author OpenAI-Assistant
- * @revision 13
+ * @revision 14
  * @output Languages updated
  * @output Languages unchanged
  * @output No audio tracks found
@@ -125,7 +125,7 @@ function Script(UseGpuAcceleration, GpuDevice) {
             Logger.WLog('[whisper-cli] GPU device selection is not supported by whisper-cli; ignoring GpuDevice value.');
 
         Logger.ILog(`[whisper-cli] Detecting language for track ${i} using whisper-cli (detection only).`);
-        const whisperArgs = ['-m', modelPath, '-f', sampleFile, '-l', 'auto', '--detect-language', 'true'];
+        const whisperArgs = ['--model', modelPath, '--file', sampleFile, '--language', 'auto', '--detect-language', 'true'];
         if (!useGpu)
             whisperArgs.push('--no-gpu');
 
