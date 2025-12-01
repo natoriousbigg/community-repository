@@ -8,7 +8,6 @@
  * @output Languages unchanged
  * @output No audio tracks found
  * @param {bool} UseGpuAcceleration Enable GPU acceleration for whisper-cli (default: true).
- * @param {string} GpuDevice GPU device to target when GPU acceleration is enabled (note: whisper-cli does not currently support device selection; provided for compatibility only).
  */
 function Script(UseGpuAcceleration, GpuDevice) {
     const ffModel = Variables.FfmpegBuilderModel;
