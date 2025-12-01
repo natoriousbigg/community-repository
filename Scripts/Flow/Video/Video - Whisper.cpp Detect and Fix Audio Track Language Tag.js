@@ -3,13 +3,13 @@
  * @uid 08cf6e37-0c77-4c08-b8d3-2794f200882c
  * @description Samples each audio track with whisper-cli to detect the spoken language and normalizes the track language tags (ISO 639-1) without running a full transcription.
  * @author OpenAI-Assistant
- * @revision 15
+ * @revision 16
  * @output Languages updated
  * @output Languages unchanged
  * @output No audio tracks found
- * @param {bool} UseGpuAcceleration Enable GPU acceleration for whisper-cli (default: true).
+ * @param {bool} NoGpu Disable GPU acceleration for whisper-cli (default: false; GPU is on by default).
  */
-function Script(UseGpuAcceleration) {
+function Script(NoGpu) {
     const ffModel = Variables.FfmpegBuilderModel;
     const vi = Variables.vi?.VideoInfo;
     const filePath = Variables.file?.FullName;
@@ -63,8 +63,8 @@ function Script(UseGpuAcceleration) {
         return typeof value === 'boolean' ? value : !!value || fallback;
     };
 
-    const gpuParam = typeof Variables['UseGpuAcceleration'] !== 'undefined' ? Variables['UseGpuAcceleration'] : UseGpuAcceleration;
-    const useGpu = parseBoolean(gpuParam, true);
+    const gpuParam = typeof Variables['NoGpu'] !== 'undefined' ? Variables['NoGpu'] : NoGpu;
+    const disableGpu = parseBoolean(gpuParam, false);
 
     const durationSeconds = vi?.Duration?.TotalSeconds || vi?.VideoStreams?.[0]?.Duration?.TotalSeconds || 0;
     const sampleStart = durationSeconds >= 1200 ? 600 : Math.max(0, durationSeconds - 600);
@@ -121,7 +121,7 @@ function Script(UseGpuAcceleration) {
 
         Logger.ILog(`[whisper-cli] Detecting language for track ${i} using whisper-cli (detection only).`);
         const whisperArgs = ['--model', modelPath, '--file', sampleFile, '--language', 'auto', '--detect-language', 'true'];
-        if (!useGpu)
+        if (disableGpu)
             whisperArgs.push('--no-gpu');
 
         const process = Flow.Execute({
