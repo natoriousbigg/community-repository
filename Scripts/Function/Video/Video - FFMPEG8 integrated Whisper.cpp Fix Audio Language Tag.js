@@ -27,14 +27,17 @@ function Script(UseGpuAcceleration, GpuDevice) {
     }
 
     const commonPath = ((Variables.common || System.Environment.GetEnvironmentVariable('common') || '/app/common').toString().trim() || '/app/common').replace(/[\\/]+$/, '');
-    const defaultFfmpeg = System.IO.Path.Combine(commonPath, 'ffmpeg-static', 'FFMPEG');
     const ffmpegOverride = (Variables['ffmpeg8'] || '').toString().trim();
+    const defaultFfmpeg = System.IO.Path.Combine(commonPath, 'ffmpeg-static', 'ffmpeg');
+    const legacyFfmpeg = System.IO.Path.Combine(commonPath, 'ffmpeg-static', 'FFMPEG');
 
     let ffmpeg = '';
     if (ffmpegOverride && System.IO.File.Exists(ffmpegOverride)) {
         ffmpeg = ffmpegOverride;
     } else if (System.IO.File.Exists(defaultFfmpeg)) {
         ffmpeg = defaultFfmpeg;
+    } else if (System.IO.File.Exists(legacyFfmpeg)) {
+        ffmpeg = legacyFfmpeg;
     } else {
         const missingMsg = "Please install DockerMod FFmpeg Fileflows Edition or BbtN FFmpeg static build, and set variable 'ffmpeg8'.";
         Logger.ELog(`[ffmpeg-whisper] ${missingMsg}`);
