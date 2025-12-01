@@ -2,7 +2,7 @@
 # Name: Whisper.cpp
 # Description: Installs the whisper.cpp CPU-only binary and downloads the ggml-small model (multilingual).
 # Author: OpenAI-Assistant
-# Revision: 8
+# Revision: 9
 # Icon: https://meta-l.cdn.bubble.io/cdn-cgi/image/w=64,h=64,f=auto,dpr=2,fit=contain/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -30,9 +30,9 @@ if [ "${1:-}" = "--uninstall" ]; then
     exit 0
 fi
 
-log "Installing required system packages (curl, ca-certificates, git, build-essential, pkg-config, cmake)."
+log "Installing required system packages (curl, ca-certificates, git, build-essential, pkg-config, cmake, Vulkan headers/libs)."
 apt-get -qq update
-apt-get install -yqq curl ca-certificates git build-essential pkg-config cmake
+apt-get install -yqq curl ca-certificates git build-essential pkg-config cmake libvulkan-dev vulkan-tools
 
 log "Preparing directories under ${INSTALL_ROOT}."
 mkdir -p "${BIN_DIR}" "${MODEL_DIR}"
@@ -42,7 +42,7 @@ binary_path=""
 build_dir="/tmp/whisper.cpp"
 rm -rf "${build_dir}"
 if git clone --branch "v${VERSION}" --depth 1 https://github.com/ggerganov/whisper.cpp "${build_dir}"; then
-    if cmake -S "${build_dir}" -B "${build_dir}/build" -DCMAKE_BUILD_TYPE=Release; then
+    if cmake -S "${build_dir}" -B "${build_dir}/build" -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=1; then
         if cmake --build "${build_dir}/build" -- -j"$(nproc)"; then
             if [ -x "${build_dir}/build/bin/whisper-cli" ]; then
                 binary_path="${build_dir}/build/bin/whisper-cli"
