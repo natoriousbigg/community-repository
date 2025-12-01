@@ -7,7 +7,7 @@
  * @output Languages updated
  * @output Languages unchanged
  * @output No audio tracks found
- * @param {boolean} UseGpuAcceleration Enable GPU acceleration for whisper processing (default: false).
+ * @param {bool} UseGpuAcceleration Enable GPU acceleration for whisper processing (default: false).
  * @param {string} GpuDevice GPU device index or identifier when GPU is enabled (default: 0 when left empty).
  */
 function Script(UseGpuAcceleration, GpuDevice) {
