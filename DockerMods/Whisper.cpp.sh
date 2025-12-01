@@ -2,7 +2,7 @@
 # Name: Whisper.cpp
 # Description: Installs the whisper.cpp CPU-only binary and downloads the ggml-small model (multilingual).
 # Author: OpenAI-Assistant
-# Revision: 9
+# Revision: 10
 # Icon: https://meta-l.cdn.bubble.io/cdn-cgi/image/w=64,h=64,f=auto,dpr=2,fit=contain/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -30,9 +30,14 @@ if [ "${1:-}" = "--uninstall" ]; then
     exit 0
 fi
 
-log "Installing required system packages (curl, ca-certificates, git, build-essential, pkg-config, cmake, Vulkan headers/libs)."
+log "Installing required system packages (curl, ca-certificates, git, build-essential, pkg-config, cmake, Vulkan headers/libs, glslc)."
 apt-get -qq update
-apt-get install -yqq curl ca-certificates git build-essential pkg-config cmake libvulkan-dev vulkan-tools
+apt-get install -yqq curl ca-certificates git build-essential pkg-config cmake libvulkan-dev vulkan-tools glslc
+
+if ! command -v glslc >/dev/null 2>&1; then
+    log "Required Vulkan shader compiler 'glslc' not found after package installation. Ensure the glslc package is available in your image repositories or install it manually before rerunning."
+    exit 1
+fi
 
 log "Preparing directories under ${INSTALL_ROOT}."
 mkdir -p "${BIN_DIR}" "${MODEL_DIR}"
