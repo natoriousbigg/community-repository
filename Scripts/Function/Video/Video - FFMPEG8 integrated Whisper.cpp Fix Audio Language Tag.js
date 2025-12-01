@@ -3,7 +3,7 @@
  * @uid 1c6d6885-2cda-45bb-b38d-bb3c53809d7c
  * @description Uses ffmpeg with the integrated Whisper.cpp filter to detect spoken languages per audio track and normalizes the track language tags (ISO 639-1) without extracting audio.
  * @author OpenAI-Assistant
- * @revision 5
+ * @revision 6
  * @output Languages updated
  * @output Languages unchanged
  * @output No audio tracks found
@@ -111,8 +111,9 @@ function Script(UseGpuAcceleration, GpuDevice) {
     }
 
     const durationSeconds = vi?.Duration?.TotalSeconds || vi?.VideoStreams?.[0]?.Duration?.TotalSeconds || 0;
-    const sampleStart = durationSeconds >= 1200 ? 600 : Math.max(0, durationSeconds - 600);
-    const sampleLength = Math.min(600, Math.max(60, durationSeconds - sampleStart));
+    const targetSample = 60;
+    const sampleLength = Math.min(targetSample, Math.max(1, durationSeconds || targetSample));
+    const sampleStart = Math.max(0, (durationSeconds - sampleLength) / 2);
 
     let updated = false;
 
@@ -142,14 +143,11 @@ function Script(UseGpuAcceleration, GpuDevice) {
             `[0:a:${i}]whisper=model=${escapeFilterValue(modelPath)}`,
             'language=auto',
             'queue=3',
-            'detect_language=1'
+            `use_gpu=${useGpu ? 1 : 0}`
         ];
 
-        if (useGpu) {
-            filterParts.push('gpu=1');
-            if (gpuIndex)
-                filterParts.push(`gpu_device=${escapeFilterValue(gpuIndex)}`);
-        }
+        if (useGpu && gpuIndex)
+            filterParts.push(`gpu_device=${escapeFilterValue(gpuIndex)}`);
 
         const filter = filterParts.join(':');
 
