@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 12
+ * @revision 13
  * @output Subtitles created
  * @output No audio tracks found
  * @param {bool} TranslateToEnglish Translate generated subtitles to English (default: false).
@@ -38,6 +38,11 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir) {
 
     const translateToEnglish = parseBoolean(typeof Variables['TranslateToEnglish'] !== 'undefined' ? Variables['TranslateToEnglish'] : TranslateToEnglish, false);
     const keepOriginal = parseBoolean(typeof Variables['KeepOriginalLanguage'] !== 'undefined' ? Variables['KeepOriginalLanguage'] : KeepOriginalLanguage, true);
+
+    if (!keepOriginal && !translateToEnglish) {
+        Logger.ELog('[whisper-sub] Whisper.cpp Aborted - Neither original Language or English translation were selected.');
+        return -1;
+    }
 
     const saveDirRaw = (typeof Variables['SubtitleSaveDir'] !== 'undefined' ? Variables['SubtitleSaveDir'] : SubtitleSaveDir || 'OrgDir').toString().trim();
     const saveDirNormalized = saveDirRaw.toLowerCase();
@@ -182,47 +187,53 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir) {
         if (!extractAudio(i, audioSample))
             return Flow.Fail('Whisper Execution Failed');
 
-        const tempBase = System.IO.Path.Combine(workingDir, `whisper_sub_track_${i}`);
-        const process = runWhisper(audioSample, tempBase, 'auto', false);
+        let detected = langMeta || 'auto';
+        let targetSrt = null;
 
-        if (process.exitCode !== 0) {
-            Logger.WLog(`[whisper-sub] whisper-cli failed for track ${i}: ${process.output}`);
-            return Flow.Fail('Whisper Execution Failed');
+        if (keepOriginal) {
+            const tempBase = System.IO.Path.Combine(workingDir, `whisper_sub_track_${i}`);
+            const process = runWhisper(audioSample, tempBase, 'auto', false);
+
+            if (process.exitCode !== 0) {
+                Logger.WLog(`[whisper-sub] whisper-cli failed for track ${i}: ${process.output}`);
+                return Flow.Fail('Whisper Execution Failed');
+            }
+
+            const combinedOutput = [process.output, process.standardOutput, process.standardError].filter(Boolean).join('\n');
+            const match = combinedOutput.match(/auto-detected language:\s*([a-zA-Z-]+)/i);
+            detected = normalizeLanguage(match ? match[1] : '') || langMeta || 'auto';
+
+            const srtPathTemp = `${tempBase}.srt`;
+            if (!System.IO.File.Exists(srtPathTemp)) {
+                Logger.WLog(`[whisper-sub] Expected subtitle not found for track ${i} at ${srtPathTemp}.`);
+                return Flow.Fail('Whisper Execution Failed');
+            }
+
+            const langForName = detected === 'auto' ? (langMeta || 'und') : detected;
+
+            if (processedLanguages.has(langForName)) {
+                Logger.ILog(`[whisper-sub] Skipping track ${i} because detected language '${langForName}' was already processed.`);
+                if (System.IO.File.Exists(srtPathTemp))
+                    System.IO.File.Delete(srtPathTemp);
+                continue;
+            }
+
+            const targetBase = System.IO.Path.Combine(targetDir, `${baseName}.${langForName}`);
+            targetSrt = `${targetBase}.srt`;
+
+            try {
+                if (System.IO.File.Exists(targetSrt))
+                    System.IO.File.Delete(targetSrt);
+                System.IO.File.Move(srtPathTemp, targetSrt);
+            } catch (err) {
+                Logger.WLog(`[whisper-sub] Failed to move subtitle for track ${i} to ${targetSrt}: ${err}`);
+                return Flow.Fail('Whisper Execution Failed');
+            }
+
+            created = true;
+            processedLanguages.add(langForName);
+            Logger.ILog(`[whisper-sub] Created subtitle for track ${i} -> ${targetSrt}.`);
         }
-
-        const combinedOutput = [process.output, process.standardOutput, process.standardError].filter(Boolean).join('\n');
-        const match = combinedOutput.match(/auto-detected language:\s*([a-zA-Z-]+)/i);
-        const detected = normalizeLanguage(match ? match[1] : '') || langMeta || 'auto';
-
-        const srtPathTemp = `${tempBase}.srt`;
-        if (!System.IO.File.Exists(srtPathTemp)) {
-            Logger.WLog(`[whisper-sub] Expected subtitle not found for track ${i} at ${srtPathTemp}.`);
-            return Flow.Fail('Whisper Execution Failed');
-        }
-
-        const langForName = detected === 'auto' ? (langMeta || 'und') : detected;
-
-        if (processedLanguages.has(langForName)) {
-            Logger.ILog(`[whisper-sub] Skipping track ${i} because detected language '${langForName}' was already processed.`);
-            if (System.IO.File.Exists(srtPathTemp))
-                System.IO.File.Delete(srtPathTemp);
-            continue;
-        }
-        const targetBase = System.IO.Path.Combine(targetDir, `${baseName}.${langForName}`);
-        const targetSrt = `${targetBase}.srt`;
-
-        try {
-            if (System.IO.File.Exists(targetSrt))
-                System.IO.File.Delete(targetSrt);
-            System.IO.File.Move(srtPathTemp, targetSrt);
-        } catch (err) {
-            Logger.WLog(`[whisper-sub] Failed to move subtitle for track ${i} to ${targetSrt}: ${err}`);
-            return Flow.Fail('Whisper Execution Failed');
-        }
-
-        created = true;
-        processedLanguages.add(langForName);
-        Logger.ILog(`[whisper-sub] Created subtitle for track ${i} -> ${targetSrt}.`);
 
         if (translateToEnglish) {
             const translateBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
@@ -233,6 +244,10 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir) {
                 return Flow.Fail('Whisper Execution Failed');
             }
 
+            const translateOutput = [translateProcess.output, translateProcess.standardOutput, translateProcess.standardError].filter(Boolean).join('\n');
+            const translateMatch = translateOutput.match(/auto-detected language:\s*([a-zA-Z-]+)/i);
+            const translatedDetected = normalizeLanguage(translateMatch ? translateMatch[1] : '') || detected;
+
             const translatedSrt = `${translateBase}.srt`;
             if (!System.IO.File.Exists(translatedSrt)) {
                 Logger.WLog(`[whisper-sub] Expected translated subtitle not found for track ${i} at ${translatedSrt}.`);
@@ -242,6 +257,10 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir) {
             Logger.ILog(`[whisper-sub] Created translated subtitle for track ${i} -> ${translatedSrt}.`);
 
             if (!keepOriginal) {
+                processedLanguages.add(translatedDetected || langMeta || 'auto');
+            }
+
+            if (!keepOriginal && targetSrt) {
                 try {
                     if (System.IO.File.Exists(targetSrt))
                         System.IO.File.Delete(targetSrt);
@@ -250,6 +269,8 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir) {
                     Logger.WLog(`[whisper-sub] Failed to delete original subtitle for track ${i}: ${err}`);
                 }
             }
+
+            created = true;
         }
     }
 
