@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 8
+ * @revision 9
  * @output Subtitles created
  * @output No audio tracks found
  * @param {string} SubtitleLanguages Languages to generate subtitles for (comma or space separated ISO 639-1/639-2 codes). Leave blank to only transcribe detected languages; include any codes to request translations into those languages.
@@ -149,11 +149,11 @@ function Script(SubtitleLanguages, DeleteOriginalAfterTranslation, SubtitleSaveD
         return true;
     };
 
-    const runWhisper = (audioPath, baseOutput, language, translateFlag, targetLanguage) => {
+    const runWhisper = (audioPath, baseOutput, language, translateFlag) => {
         const args = [
             '--model', modelPath,
             '--file', audioPath,
-            '--language', (translateFlag && targetLanguage) ? targetLanguage : (language || 'auto'),
+            '--language', language || 'auto',
             '--output-srt', 'true',
             '--output-file', baseOutput
         ];
@@ -192,7 +192,8 @@ function Script(SubtitleLanguages, DeleteOriginalAfterTranslation, SubtitleSaveD
             return Flow.Fail('Whisper Execution Failed');
 
         const tempBase = System.IO.Path.Combine(workingDir, `whisper_sub_track_${i}`);
-        const process = runWhisper(audioSample, tempBase, langMeta || 'auto', false);
+        const baseLanguage = translationTargets.size === 0 ? 'auto' : (langMeta || 'auto');
+        const process = runWhisper(audioSample, tempBase, baseLanguage, false);
 
         if (process.exitCode !== 0) {
             Logger.WLog(`[whisper-sub] whisper-cli failed for track ${i}: ${process.output}`);
@@ -241,7 +242,7 @@ function Script(SubtitleLanguages, DeleteOriginalAfterTranslation, SubtitleSaveD
                     continue;
 
                 const translateBase = System.IO.Path.Combine(targetDir, `${baseName}.${targetLang}`);
-                const translateProcess = runWhisper(audioSample, translateBase, detected === 'auto' ? 'auto' : detected, true, targetLang);
+                const translateProcess = runWhisper(audioSample, translateBase, targetLang, true);
                 if (translateProcess.exitCode !== 0) {
                     Logger.WLog(`[whisper-sub] Translation to '${targetLang}' failed for track ${i}: ${translateProcess.output}`);
                     return Flow.Fail('Whisper Execution Failed');
