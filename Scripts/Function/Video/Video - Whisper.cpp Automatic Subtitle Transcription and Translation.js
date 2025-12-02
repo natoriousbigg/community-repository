@@ -3,15 +3,16 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 17
+ * @revision 18
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English (default: false).
  * @param {bool} KeepOriginalLanguage Keep the original-language subtitle when a translation is produced (default: true).
  * @param {('OrgDir'|'WorkingDir')} SubtitleSaveDir Directory to save subtitles to. OrgDir - Original Directory. WorkingDir - Fileflows working directory. Default: OrgDir.
  * @param {bool} SkipExistingSubtitles Skip generation if a subtitle for the language already exists (embedded or sidecar). Default: true.
+ * @param {bool} DebugMode Disable quiet whisper-cli output (removes --no-prints). Default: false.
  */
-function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir, SkipExistingSubtitles) {
+function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir, SkipExistingSubtitles, DebugMode) {
     const vi = Variables.vi?.VideoInfo;
     const filePath = Variables.file?.FullName;
 
@@ -41,6 +42,7 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir, SkipE
     const translateToEnglish = parseBoolean(typeof Variables['TranslateToEnglish'] !== 'undefined' ? Variables['TranslateToEnglish'] : TranslateToEnglish, false);
     const keepOriginal = parseBoolean(typeof Variables['KeepOriginalLanguage'] !== 'undefined' ? Variables['KeepOriginalLanguage'] : KeepOriginalLanguage, true);
     const skipExistingSubtitles = parseBoolean(typeof Variables['SkipExistingSubtitles'] !== 'undefined' ? Variables['SkipExistingSubtitles'] : SkipExistingSubtitles, true);
+    const debugMode = parseBoolean(typeof Variables['DebugMode'] !== 'undefined' ? Variables['DebugMode'] : DebugMode, false);
 
     if (!keepOriginal && !translateToEnglish) {
         Logger.ELog('[whisper-sub] Whisper.cpp Aborted - Neither original Language or English translation were selected.');
@@ -190,6 +192,9 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir, SkipE
             '--detect-language', 'true'
         ];
 
+        if (!debugMode)
+            args.push('--no-prints', 'true');
+
         const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
         if (process.exitCode !== 0) {
             Logger.WLog(`[whisper-sub] Language detection failed: ${process.output}`);
@@ -207,9 +212,11 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir, SkipE
             '--file', audioPath,
             '--language', language || 'auto',
             '--output-srt', 'true',
-            '--output-file', baseOutput,
-            '--no-prints', 'true'
+            '--output-file', baseOutput
         ];
+
+        if (!debugMode)
+            args.push('--no-prints', 'true');
 
         if (translateFlag)
             args.push('--translate', 'true');
