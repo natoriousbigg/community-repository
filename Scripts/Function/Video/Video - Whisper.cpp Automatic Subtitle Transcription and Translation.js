@@ -3,14 +3,15 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 9
+ * @revision 10
  * @output Subtitles created
  * @output No audio tracks found
- * @param {string} SubtitleLanguages Languages to generate subtitles for (comma or space separated ISO 639-1/639-2 codes). Leave blank to only transcribe detected languages; include any codes to request translations into those languages.
- * @param {bool} DeleteOriginalAfterTranslation Delete the original-language subtitle when a translation is produced (default: false).
+ * @param {string} SubtitleLanguages Languages to generate subtitles for (comma or space separated ISO 639-1/639-2 codes). Leave blank to transcribe any detected language.
+ * @param {bool} TranslateToEnglish Translate generated subtitles to English (default: false).
+ * @param {bool} KeepOriginalLanguage Keep the original-language subtitle when a translation is produced (default: true).
  * @param {('OrgDir'|'WorkingDir')} SubtitleSaveDir Directory to save subtitles to. OrgDir - Original Directory. WorkingDir - Fileflows working directory. Default: OrgDir.
  */
-function Script(SubtitleLanguages, DeleteOriginalAfterTranslation, SubtitleSaveDir) {
+function Script(SubtitleLanguages, TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir) {
     const vi = Variables.vi?.VideoInfo;
     const filePath = Variables.file?.FullName;
 
@@ -36,7 +37,8 @@ function Script(SubtitleLanguages, DeleteOriginalAfterTranslation, SubtitleSaveD
         return typeof value === 'boolean' ? value : !!value || fallback;
     };
 
-    const deleteOriginal = parseBoolean(typeof Variables['DeleteOriginalAfterTranslation'] !== 'undefined' ? Variables['DeleteOriginalAfterTranslation'] : DeleteOriginalAfterTranslation, false);
+    const translateToEnglish = parseBoolean(typeof Variables['TranslateToEnglish'] !== 'undefined' ? Variables['TranslateToEnglish'] : TranslateToEnglish, false);
+    const keepOriginal = parseBoolean(typeof Variables['KeepOriginalLanguage'] !== 'undefined' ? Variables['KeepOriginalLanguage'] : KeepOriginalLanguage, true);
 
     const saveDirRaw = (typeof Variables['SubtitleSaveDir'] !== 'undefined' ? Variables['SubtitleSaveDir'] : SubtitleSaveDir || 'OrgDir').toString().trim();
     const saveDirNormalized = saveDirRaw.toLowerCase();
@@ -44,12 +46,12 @@ function Script(SubtitleLanguages, DeleteOriginalAfterTranslation, SubtitleSaveD
 
     const languageListRaw = (typeof Variables['SubtitleLanguages'] !== 'undefined' ? Variables['SubtitleLanguages'] : SubtitleLanguages || '').toString();
     const languageTokens = languageListRaw.split(/[\s,]+/).map(t => t.trim()).filter(Boolean);
-    const translationTargets = new Set();
+    const allowedLanguages = new Set();
     for (let i = 0; i < languageTokens.length; i++) {
         const token = languageTokens[i].toLowerCase();
         const iso1 = LanguageHelper?.GetIso1Code?.(token) || '';
         const iso2 = LanguageHelper?.GetIso2Code?.(token) || '';
-        translationTargets.add((iso1 || iso2 || token).toLowerCase());
+        allowedLanguages.add((iso1 || iso2 || token).toLowerCase());
     }
 
     const normalizeLanguage = (value) => {
@@ -192,8 +194,7 @@ function Script(SubtitleLanguages, DeleteOriginalAfterTranslation, SubtitleSaveD
             return Flow.Fail('Whisper Execution Failed');
 
         const tempBase = System.IO.Path.Combine(workingDir, `whisper_sub_track_${i}`);
-        const baseLanguage = translationTargets.size === 0 ? 'auto' : (langMeta || 'auto');
-        const process = runWhisper(audioSample, tempBase, baseLanguage, false);
+        const process = runWhisper(audioSample, tempBase, 'auto', false);
 
         if (process.exitCode !== 0) {
             Logger.WLog(`[whisper-sub] whisper-cli failed for track ${i}: ${process.output}`);
@@ -211,6 +212,13 @@ function Script(SubtitleLanguages, DeleteOriginalAfterTranslation, SubtitleSaveD
         }
 
         const langForName = detected === 'auto' ? (langMeta || 'und') : detected;
+
+        if (allowedLanguages.size > 0 && !allowedLanguages.has(langForName)) {
+            Logger.ILog(`[whisper-sub] Skipping track ${i} because detected language '${langForName}' is not in the allowed list.`);
+            if (System.IO.File.Exists(srtPathTemp))
+                System.IO.File.Delete(srtPathTemp);
+            continue;
+        }
 
         if (processedLanguages.has(langForName)) {
             Logger.ILog(`[whisper-sub] Skipping track ${i} because detected language '${langForName}' was already processed.`);
@@ -234,31 +242,23 @@ function Script(SubtitleLanguages, DeleteOriginalAfterTranslation, SubtitleSaveD
         processedLanguages.add(langForName);
         Logger.ILog(`[whisper-sub] Created subtitle for track ${i} -> ${targetSrt}.`);
 
-        if (translationTargets.size > 0) {
-            let translatedAny = false;
-            for (const target of translationTargets) {
-                const targetLang = normalizeLanguage(target);
-                if (!targetLang || targetLang === langForName)
-                    continue;
-
-                const translateBase = System.IO.Path.Combine(targetDir, `${baseName}.${targetLang}`);
-                const translateProcess = runWhisper(audioSample, translateBase, targetLang, true);
-                if (translateProcess.exitCode !== 0) {
-                    Logger.WLog(`[whisper-sub] Translation to '${targetLang}' failed for track ${i}: ${translateProcess.output}`);
-                    return Flow.Fail('Whisper Execution Failed');
-                }
-
-                const translatedSrt = `${translateBase}.srt`;
-                if (!System.IO.File.Exists(translatedSrt)) {
-                    Logger.WLog(`[whisper-sub] Expected translated subtitle not found for track ${i} at ${translatedSrt}.`);
-                    return Flow.Fail('Whisper Execution Failed');
-                }
-
-                translatedAny = true;
-                Logger.ILog(`[whisper-sub] Created translated subtitle for track ${i} -> ${translatedSrt}.`);
+        if (translateToEnglish) {
+            const translateBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
+            const translateProcess = runWhisper(audioSample, translateBase, 'en', true);
+            if (translateProcess.exitCode !== 0) {
+                Logger.WLog(`[whisper-sub] Translation to English failed for track ${i}: ${translateProcess.output}`);
+                return Flow.Fail('Whisper Execution Failed');
             }
 
-            if (deleteOriginal && translatedAny) {
+            const translatedSrt = `${translateBase}.srt`;
+            if (!System.IO.File.Exists(translatedSrt)) {
+                Logger.WLog(`[whisper-sub] Expected translated subtitle not found for track ${i} at ${translatedSrt}.`);
+                return Flow.Fail('Whisper Execution Failed');
+            }
+
+            Logger.ILog(`[whisper-sub] Created translated subtitle for track ${i} -> ${translatedSrt}.`);
+
+            if (!keepOriginal) {
                 try {
                     if (System.IO.File.Exists(targetSrt))
                         System.IO.File.Delete(targetSrt);
