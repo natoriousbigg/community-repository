@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 11
+ * @revision 12
  * @output Subtitles created
  * @output No audio tracks found
  * @param {bool} TranslateToEnglish Translate generated subtitles to English (default: false).
@@ -226,7 +226,8 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir) {
 
         if (translateToEnglish) {
             const translateBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
-            const translateProcess = runWhisper(audioSample, translateBase, 'en', true);
+            const sourceLang = detected !== 'auto' ? detected : (langMeta || 'auto');
+            const translateProcess = runWhisper(audioSample, translateBase, sourceLang, true);
             if (translateProcess.exitCode !== 0) {
                 Logger.WLog(`[whisper-sub] Translation to English failed for track ${i}: ${translateProcess.output}`);
                 return Flow.Fail('Whisper Execution Failed');
