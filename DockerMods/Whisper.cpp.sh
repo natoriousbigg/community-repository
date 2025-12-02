@@ -1,8 +1,9 @@
 # ----------------------------------------------------------------------------------------------------
 # Name: Whisper.cpp
-# Description: Installs the whisper.cpp CPU-only binary and downloads the ggml-small model (multilingual).
+# Description: Installs the whisper.cpp binary with Vulkan support and downloads the ggml-small model
+#              into /app/common/whispercpp/models with a model.bin symlink.
 # Author: OpenAI-Assistant
-# Revision: 8
+# Revision: 13
 # Icon: https://meta-l.cdn.bubble.io/cdn-cgi/image/w=64,h=64,f=auto,dpr=2,fit=contain/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -13,28 +14,35 @@ log() {
     echo "[whisper.cpp] $1"
 }
 
-INSTALL_ROOT="/app/data/whispercpp"
+INSTALL_ROOT="/app/common/whispercpp"
 BIN_DIR="${INSTALL_ROOT}/bin"
 MODEL_DIR="${INSTALL_ROOT}/models"
-BIN_LINK="/usr/local/bin/whisper-cli"
-BIN_LINK_LEGACY="/usr/local/bin/whispercpp"
-VERSION="1.8.2"
 MODEL_FILE="${MODEL_DIR}/ggml-small.bin"
+MODEL_LINK="${MODEL_DIR}/model.bin"
+BIN_LINK="/usr/local/bin/whisper-cli"
+VERSION="1.8.2"
 MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
 
 if [ "${1:-}" = "--uninstall" ]; then
     log "Uninstall flag detected. Removing whisper.cpp binaries and models..."
-    rm -f "${BIN_LINK}" "${BIN_LINK_LEGACY}" || true
+    rm -f "${BIN_LINK}" || true
     rm -rf "${INSTALL_ROOT}"
+    rm -f "${MODEL_FILE}" "${MODEL_LINK}" || true
+    rmdir --ignore-fail-on-non-empty "${MODEL_DIR}" 2>/dev/null || true
     log "Uninstall complete."
     exit 0
 fi
 
-log "Installing required system packages (curl, ca-certificates, git, build-essential, pkg-config, cmake)."
+log "Installing required system packages (curl, ca-certificates, git, build-essential, pkg-config, cmake, Vulkan headers/libs, glslc)."
 apt-get -qq update
-apt-get install -yqq curl ca-certificates git build-essential pkg-config cmake
+apt-get install -yqq curl ca-certificates git build-essential pkg-config cmake libvulkan-dev vulkan-tools glslc
 
-log "Preparing directories under ${INSTALL_ROOT}."
+if ! command -v glslc >/dev/null 2>&1; then
+    log "Required Vulkan shader compiler 'glslc' not found after package installation. Ensure the glslc package is available in your image repositories or install it manually before rerunning."
+    exit 1
+fi
+
+log "Preparing directories under ${INSTALL_ROOT} and ${MODEL_DIR}."
 mkdir -p "${BIN_DIR}" "${MODEL_DIR}"
 
 log "Building whisper.cpp v${VERSION} from source (no prebuilt binaries available)."
@@ -42,7 +50,7 @@ binary_path=""
 build_dir="/tmp/whisper.cpp"
 rm -rf "${build_dir}"
 if git clone --branch "v${VERSION}" --depth 1 https://github.com/ggerganov/whisper.cpp "${build_dir}"; then
-    if cmake -S "${build_dir}" -B "${build_dir}/build" -DCMAKE_BUILD_TYPE=Release; then
+    if cmake -S "${build_dir}" -B "${build_dir}/build" -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=1; then
         if cmake --build "${build_dir}/build" -- -j"$(nproc)"; then
             if [ -x "${build_dir}/build/bin/whisper-cli" ]; then
                 binary_path="${build_dir}/build/bin/whisper-cli"
@@ -65,13 +73,15 @@ else
     exit 1
 fi
 
-log "Installing binary to ${BIN_DIR}/whisper-cli and linking at ${BIN_LINK} (with legacy alias)."
+log "Installing binary to ${BIN_DIR}/whisper-cli and linking at ${BIN_LINK}."
 install -m 0755 "${binary_path}" "${BIN_DIR}/whisper-cli"
 ln -sf "${BIN_DIR}/whisper-cli" "${BIN_LINK}"
-ln -sf "${BIN_DIR}/whisper-cli" "${BIN_LINK_LEGACY}"
 
 log "Downloading default multilingual model to ${MODEL_FILE}."
 curl -L "${MODEL_URL}" -o "${MODEL_FILE}"
 
-log "whisper.cpp installation complete. Use 'whisper-cli -f <audio.wav> -m ${MODEL_FILE}' to transcribe. (Legacy alias: whispercpp)"
+log "Creating symbolic link ${MODEL_LINK} -> ${MODEL_FILE}."
+ln -sfn "${MODEL_FILE}" "${MODEL_LINK}"
+
+log "whisper.cpp installation complete. Use 'whisper-cli --file <audio.wav> --model ${MODEL_LINK}' to transcribe."
 exit 0
