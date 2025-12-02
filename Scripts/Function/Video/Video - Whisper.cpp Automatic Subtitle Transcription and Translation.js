@@ -3,9 +3,9 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 15
+ * @revision 16
  * @output Subtitles created
- * @output No audio tracks found
+ * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English (default: false).
  * @param {bool} KeepOriginalLanguage Keep the original-language subtitle when a translation is produced (default: true).
  * @param {('OrgDir'|'WorkingDir')} SubtitleSaveDir Directory to save subtitles to. OrgDir - Original Directory. WorkingDir - Fileflows working directory. Default: OrgDir.
@@ -22,8 +22,9 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir, SkipE
 
     const audioStreams = vi.AudioStreams;
     if (!audioStreams || audioStreams.length === 0) {
-        Logger.WLog('[whisper-sub] No audio streams available.');
-        return 2;
+        Logger.ELog('[whisper-sub] No audio streams available.');
+        Flow.Fail('No audio tracks found');
+        return -1;
     }
 
     const parseBoolean = (value, fallback = false) => {
