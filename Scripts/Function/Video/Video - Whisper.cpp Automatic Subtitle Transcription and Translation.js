@@ -232,9 +232,6 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SkipExistingSubtitles 
         if (disableGpu)
             args.push('--no-gpu', 'true');
 
-        if (!debugMode)
-            args.push('--no-prints', 'true');
-
         if (useVad && hasVad) {
             args.push('--vad', 'true');
             args.push('--vad-model', vadPath);
