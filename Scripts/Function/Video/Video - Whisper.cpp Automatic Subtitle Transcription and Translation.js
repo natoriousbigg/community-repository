@@ -3,10 +3,10 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 6
+ * @revision 7
  * @output Subtitles created
  * @output No audio tracks found
- * @param {string} SubtitleLanguages Languages to process/translate (comma or space separated ISO 639-1/639-2 codes; leave blank to skip translation and include all).
+ * @param {string} SubtitleLanguages Target subtitle languages (comma or space separated ISO 639-1/639-2 codes). Include 'en'/'eng' to generate English translations; leave blank to skip translation.
  * @param {bool} DeleteOriginalAfterTranslation Delete the original-language subtitle when a translation is produced (default: false).
  * @param {('OrgDir'|'WorkingDir')} SubtitleSaveDir Directory to save subtitles to. OrgDir - Original Directory. WorkingDir - Fileflows working directory. Default: OrgDir.
  */
@@ -44,15 +44,19 @@ function Script(SubtitleLanguages, DeleteOriginalAfterTranslation, SubtitleSaveD
 
     const languageListRaw = (typeof Variables['SubtitleLanguages'] !== 'undefined' ? Variables['SubtitleLanguages'] : SubtitleLanguages || '').toString();
     const languageTokens = languageListRaw.split(/[\s,]+/).map(t => t.trim()).filter(Boolean);
-    const languageFilter = new Set();
+    const translationTargets = new Set();
     for (let i = 0; i < languageTokens.length; i++) {
         const token = languageTokens[i].toLowerCase();
         const iso1 = LanguageHelper?.GetIso1Code?.(token) || '';
         const iso2 = LanguageHelper?.GetIso2Code?.(token) || '';
-        languageFilter.add((iso1 || iso2 || token).toLowerCase());
+        translationTargets.add((iso1 || iso2 || token).toLowerCase());
     }
 
-    const translate = languageFilter.size > 0;
+    const wantsEnglish = translationTargets.has('en') || translationTargets.has('eng');
+    const unsupportedTargets = Array.from(translationTargets).filter(code => code !== 'en' && code !== 'eng');
+    if (unsupportedTargets.length > 0) {
+        Logger.WLog(`[whisper-sub] Only English translation is supported (via --translate). Ignoring unsupported targets: ${unsupportedTargets.join(', ')}.`);
+    }
 
     const normalizeLanguage = (value) => {
         const trimmed = (value || '').trim();
@@ -235,7 +239,7 @@ function Script(SubtitleLanguages, DeleteOriginalAfterTranslation, SubtitleSaveD
         processedLanguages.add(langForName);
         Logger.ILog(`[whisper-sub] Created subtitle for track ${i} -> ${targetSrt}.`);
 
-        const translateThisTrack = translate && languageFilter.has(langForName);
+        const translateThisTrack = wantsEnglish && (translationTargets.has('en') || translationTargets.has('eng') || translationTargets.has(langForName));
 
         if (translateThisTrack) {
             const translateBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
