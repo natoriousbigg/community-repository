@@ -59,6 +59,7 @@ function Script(UseGpuAcceleration, GpuDevice) {
     const legacyModelDir = System.IO.Path.Combine(commonPath, 'whisper-models');
     const modelOverride = (Variables['whisper-model'] || '').toString().trim();
     const modelLink = System.IO.Path.Combine(modelDir, 'model.bin');
+    const legacyModelLink = System.IO.Path.Combine(legacyModelDir, 'model.bin');
     const legacyActiveModel = System.IO.Path.Combine(legacyModelDir, 'active-model.bin');
     const modelCandidates = [];
 
@@ -69,6 +70,7 @@ function Script(UseGpuAcceleration, GpuDevice) {
 
     addModelCandidate(modelOverride);
     addModelCandidate(modelLink);
+    addModelCandidate(legacyModelLink);
     addModelCandidate(legacyActiveModel);
 
     const collectBinFiles = (directory) => {
