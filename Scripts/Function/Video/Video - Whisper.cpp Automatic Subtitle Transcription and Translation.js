@@ -3,14 +3,15 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 13
+ * @revision 14
  * @output Subtitles created
  * @output No audio tracks found
  * @param {bool} TranslateToEnglish Translate generated subtitles to English (default: false).
  * @param {bool} KeepOriginalLanguage Keep the original-language subtitle when a translation is produced (default: true).
  * @param {('OrgDir'|'WorkingDir')} SubtitleSaveDir Directory to save subtitles to. OrgDir - Original Directory. WorkingDir - Fileflows working directory. Default: OrgDir.
+ * @param {bool} SkipExistingSubtitles Skip generation if a subtitle for the language already exists (embedded or sidecar). Default: true.
  */
-function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir) {
+function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir, SkipExistingSubtitles) {
     const vi = Variables.vi?.VideoInfo;
     const filePath = Variables.file?.FullName;
 
@@ -38,6 +39,7 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir) {
 
     const translateToEnglish = parseBoolean(typeof Variables['TranslateToEnglish'] !== 'undefined' ? Variables['TranslateToEnglish'] : TranslateToEnglish, false);
     const keepOriginal = parseBoolean(typeof Variables['KeepOriginalLanguage'] !== 'undefined' ? Variables['KeepOriginalLanguage'] : KeepOriginalLanguage, true);
+    const skipExistingSubtitles = parseBoolean(typeof Variables['SkipExistingSubtitles'] !== 'undefined' ? Variables['SkipExistingSubtitles'] : SkipExistingSubtitles, true);
 
     if (!keepOriginal && !translateToEnglish) {
         Logger.ELog('[whisper-sub] Whisper.cpp Aborted - Neither original Language or English translation were selected.');
@@ -123,6 +125,41 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir) {
     const baseName = System.IO.Path.GetFileNameWithoutExtension(filePath);
 
     const processedLanguages = new Set();
+    const existingSubtitleLanguages = new Set();
+
+    const subtitleStreams = vi.SubtitleStreams || vi.Subtitles || vi.SubtitleTracks || [];
+    if (Array.isArray(subtitleStreams)) {
+        for (const sub of subtitleStreams) {
+            const lang = normalizeLanguage(sub?.Language || sub?.Lang || '');
+            if (lang)
+                existingSubtitleLanguages.add(lang);
+        }
+    }
+
+    try {
+        const sidecars = System.IO.Directory.GetFiles(targetDir, `${baseName}*.srt`);
+        for (const srtPath of sidecars) {
+            const nameWithoutExt = System.IO.Path.GetFileNameWithoutExtension(srtPath);
+            if (nameWithoutExt && nameWithoutExt.startsWith(`${baseName}.`)) {
+                const langPart = nameWithoutExt.substring(baseName.length + 1);
+                const lang = normalizeLanguage(langPart);
+                if (lang)
+                    existingSubtitleLanguages.add(lang);
+            }
+        }
+    } catch (err) {
+        Logger.WLog(`[whisper-sub] Failed to scan existing subtitles: ${err}`);
+    }
+
+    const hasExistingSubtitle = (lang) => {
+        const normalized = normalizeLanguage(lang);
+        if (!normalized)
+            return false;
+        if (existingSubtitleLanguages.has(normalized))
+            return true;
+        const sidecarPath = System.IO.Path.Combine(targetDir, `${baseName}.${normalized}.srt`);
+        return System.IO.File.Exists(sidecarPath);
+    };
     let created = false;
 
     const extractAudio = (trackIndex, outputPath) => {
@@ -183,6 +220,12 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir) {
             continue;
         }
 
+        if (skipExistingSubtitles && langMeta && hasExistingSubtitle(langMeta)) {
+            Logger.ILog(`[whisper-sub] Skipping track ${i} because subtitles for language '${langMeta}' already exist.`);
+            processedLanguages.add(langMeta);
+            continue;
+        }
+
         const audioSample = System.IO.Path.Combine(workingDir, `whisper_sub_track_${i}.wav`);
         if (!extractAudio(i, audioSample))
             return Flow.Fail('Whisper Execution Failed');
@@ -218,6 +261,14 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir) {
                 continue;
             }
 
+            if (skipExistingSubtitles && hasExistingSubtitle(langForName)) {
+                Logger.ILog(`[whisper-sub] Skipping creation for track ${i} because subtitles for '${langForName}' already exist.`);
+                if (System.IO.File.Exists(srtPathTemp))
+                    System.IO.File.Delete(srtPathTemp);
+                processedLanguages.add(langForName);
+                continue;
+            }
+
             const targetBase = System.IO.Path.Combine(targetDir, `${baseName}.${langForName}`);
             targetSrt = `${targetBase}.srt`;
 
@@ -236,6 +287,10 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir) {
         }
 
         if (translateToEnglish) {
+            if (skipExistingSubtitles && hasExistingSubtitle('en')) {
+                Logger.ILog(`[whisper-sub] Skipping English translation for track ${i} because an English subtitle already exists.`);
+                continue;
+            }
             const translateBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
             const sourceLang = detected !== 'auto' ? detected : (langMeta || 'auto');
             const translateProcess = runWhisper(audioSample, translateBase, sourceLang, true);
