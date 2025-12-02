@@ -1,14 +1,15 @@
 /**
- * @name Video - Whisper.cpp Detect and Fix Audio Track Language Tag
+ * @name Video - Whisper.cpp Fix Audio Language Tags
  * @uid 08cf6e37-0c77-4c08-b8d3-2794f200882c
  * @description Samples each audio track with whisper-cli to detect the spoken language and normalizes the track language tags (ISO 639-1) without running a full transcription.
  * @author OpenAI-Assistant
- * @revision 8
+ * @revision 19
  * @output Languages updated
  * @output Languages unchanged
  * @output No audio tracks found
+ * @param {bool} NoGpu Disable GPU acceleration for whisper-cli (default: false; GPU is on by default).
  */
-function Script() {
+function Script(NoGpu) {
     const ffModel = Variables.FfmpegBuilderModel;
     const vi = Variables.vi?.VideoInfo;
     const filePath = Variables.file?.FullName;
@@ -31,7 +32,7 @@ function Script() {
     const variableWhisper = (Variables['whisper'] || '').toString().trim();
     const variableModel = (Variables['whisper-model'] || '').toString().trim();
     const whisperCli = variableWhisper || Flow.GetToolPath('whisper-cli') || Flow.GetToolPath('whisper') || '/usr/local/bin/whisper-cli';
-    const modelPath = variableModel || '/app/data/whispercpp/models/ggml-small.bin';
+    const modelPath = variableModel || '/app/common/whispercpp/models/model.bin';
 
     const missing = [];
     if (!System.IO.File.Exists(whisperCli))
@@ -42,14 +43,28 @@ function Script() {
     if (missing.length > 0) {
         Logger.ELog(`[whisper-cli] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
         if (isWindows) {
-            Logger.ELog("[whisper-cli] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp/releases/ and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main, then set 'whisper' (binary) and 'whisper-model' (model) variables in this node's settings.");
+            Logger.ELog("[whisper-cli] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp/releases/ and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main, then set 'whisper' (binary) and 'whisper-model' (model) variables in this node's settings or install the Whisper.cpp DockerMod and model DockerMods.");
         } else if (isDocker) {
-            Logger.ELog('[whisper-cli] Install the Whisper.cpp DockerMod to provision the binary and model.');
+            Logger.ELog("[whisper-cli] Install the Whisper.cpp DockerMod to provision the binary and /app/common/whispercpp/models/model.bin symlink. You can also install the 'Whisper.cpp - Medium Model & Solera VAD' DockerMod for additional models.");
         } else {
-            Logger.ELog("[whisper-cli] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main, then set 'whisper' (binary) and 'whisper-model' (model) variables in this node's settings.");
+            Logger.ELog("[whisper-cli] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main, then set 'whisper' (binary) and 'whisper-model' (model) variables in this node's settings or install the Whisper.cpp DockerMod and model DockerMods.");
         }
         return Flow.Fail('Whisper.cpp and/or model missing, please install and set variables');
     }
+
+    const parseBoolean = (value, fallback = false) => {
+        if (typeof value === 'string') {
+            const normalized = value.trim().toLowerCase();
+            if (['1', 'true', 'yes', 'on', 'enabled'].includes(normalized))
+                return true;
+            if (['0', 'false', 'no', 'off', 'disabled', ''].includes(normalized))
+                return false;
+        }
+        return typeof value === 'boolean' ? value : !!value || fallback;
+    };
+
+    const gpuParam = typeof Variables['NoGpu'] !== 'undefined' ? Variables['NoGpu'] : NoGpu;
+    const disableGpu = parseBoolean(gpuParam, false);
 
     const durationSeconds = vi?.Duration?.TotalSeconds || vi?.VideoStreams?.[0]?.Duration?.TotalSeconds || 0;
     const sampleStart = durationSeconds >= 1200 ? 600 : Math.max(0, durationSeconds - 600);
@@ -105,15 +120,19 @@ function Script() {
         }
 
         Logger.ILog(`[whisper-cli] Detecting language for track ${i} using whisper-cli (detection only).`);
+        const whisperArgs = ['--model', modelPath, '--file', sampleFile, '--language', 'auto', '--detect-language', 'true'];
+        if (disableGpu)
+            whisperArgs.push('--no-gpu');
+
         const process = Flow.Execute({
             command: whisperCli,
-            argumentList: ['-m', modelPath, '-f', sampleFile, '-l', 'auto', '--detect-language', 'true'],
+            argumentList: whisperArgs,
             logOutput: false
         });
 
         if (process.exitCode !== 0) {
             Logger.WLog(`[whisper-cli] whisper-cli failed for track ${i}: ${process.output}`);
-            continue;
+            return Flow.Fail('Whisper Execution Failed');
         }
 
         const match = (process.output || '').match(/auto-detected language:\s*([a-zA-Z-]+)/i);
@@ -122,7 +141,7 @@ function Script() {
 
         if (!detected) {
             Logger.WLog(`[whisper-cli] Could not determine language for track ${i}. Output: ${process.output}`);
-            continue;
+            return Flow.Fail('Whisper Execution Failed');
         }
 
         if (existingLang === detected) {
