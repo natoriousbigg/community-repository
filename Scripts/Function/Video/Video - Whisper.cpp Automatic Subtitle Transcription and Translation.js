@@ -341,16 +341,6 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir, SkipE
                 processedLanguages.add(translatedDetected || langMeta || 'auto');
             }
 
-            if (!keepOriginal && targetSrt) {
-                try {
-                    if (System.IO.File.Exists(targetSrt))
-                        System.IO.File.Delete(targetSrt);
-                    Logger.ILog(`[whisper-sub] Deleted original-language subtitle for track ${i} after translation.`);
-                } catch (err) {
-                    Logger.WLog(`[whisper-sub] Failed to delete original subtitle for track ${i}: ${err}`);
-                }
-            }
-
             created = true;
         }
     }
