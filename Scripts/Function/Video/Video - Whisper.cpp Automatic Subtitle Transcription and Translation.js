@@ -176,8 +176,8 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SkipExistingSubtitles 
     let created = false;
 
     const durationSeconds = vi?.Duration?.TotalSeconds || vi?.VideoStreams?.[0]?.Duration?.TotalSeconds || 0;
-    const sampleLength = Math.min(600, Math.max(1, durationSeconds || 600));
-    const sampleStart = Math.max(0, Math.min(600, Math.max(0, (durationSeconds || 0) - sampleLength)));
+    const sampleStart = durationSeconds >= 600 ? 600 : 0;
+    const sampleLength = Math.min(600, Math.max(1, (durationSeconds || 0) - sampleStart || durationSeconds || 600));
 
     const extractAudioSample = (trackIndex, outputPath) => {
         if (System.IO.File.Exists(outputPath))
@@ -387,12 +387,45 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SkipExistingSubtitles 
         }
 
         if (translateToEnglish) {
+            const sourceLang = detected !== 'auto' ? detected : (langMeta || 'auto');
+            const normalizedSourceLang = normalizeLanguage(sourceLang);
+
+            if (normalizedSourceLang === 'en') {
+                Logger.ILog(`[whisper-sub] Skipping translation for track ${i} because language is already English.`);
+
+                if (!keepOriginal) {
+                    if (skipExistingSubtitles && hasExistingSubtitle('en')) {
+                        Logger.ILog(`[whisper-sub] Skipping English transcription for track ${i} because an English subtitle already exists.`);
+                        processedLanguages.add('en');
+                        continue;
+                    }
+
+                    const englishBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
+                    const englishProcess = runWhisper(audioSample, englishBase, 'en', false);
+                    if (englishProcess.exitCode !== 0) {
+                        Logger.WLog(`[whisper-sub] English transcription failed for track ${i}: ${englishProcess.output}`);
+                        return Flow.Fail('Whisper Execution Failed');
+                    }
+
+                    const englishSrt = `${englishBase}.srt`;
+                    if (!System.IO.File.Exists(englishSrt)) {
+                        Logger.WLog(`[whisper-sub] Expected English subtitle not found for track ${i} at ${englishSrt}.`);
+                        return Flow.Fail('Whisper Execution Failed');
+                    }
+
+                    Logger.ILog(`[whisper-sub] Created English subtitle for track ${i} -> ${englishSrt}.`);
+                    processedLanguages.add('en');
+                    created = true;
+                }
+
+                continue;
+            }
+
             if (skipExistingSubtitles && hasExistingSubtitle('en')) {
                 Logger.ILog(`[whisper-sub] Skipping English translation for track ${i} because an English subtitle already exists.`);
                 continue;
             }
             const translateBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
-            const sourceLang = detected !== 'auto' ? detected : (langMeta || 'auto');
             const translateProcess = runWhisper(audioSample, translateBase, sourceLang, true);
             if (translateProcess.exitCode !== 0) {
                 Logger.WLog(`[whisper-sub] Translation to English failed for track ${i}: ${translateProcess.output}`);
