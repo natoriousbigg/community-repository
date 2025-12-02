@@ -8,11 +8,11 @@
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English (default: false).
  * @param {bool} KeepOriginalLanguage Keep the original-language subtitle when a translation is produced (default: true).
- * @param {('OrgDir'|'WorkingDir')} SubtitleSaveDir Directory to save subtitles to. OrgDir - Original Directory. WorkingDir - Fileflows working directory. Default: OrgDir.
  * @param {bool} SkipExistingSubtitles Skip generation if a subtitle for the language already exists (embedded or sidecar). Default: true.
  * @param {bool} DebugMode Disable quiet whisper-cli output (removes --no-prints). Default: false.
+ * @param {('OrgDir'|'WorkingDir')} SubtitleSaveDir Directory to save subtitles to. OrgDir - Original Directory. WorkingDir - Fileflows working directory. Default: OrgDir.
  */
-function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir, SkipExistingSubtitles, DebugMode) {
+function Script(TranslateToEnglish, KeepOriginalLanguage, SkipExistingSubtitles, DebugMode, SubtitleSaveDir) {
     const vi = Variables.vi?.VideoInfo;
     const filePath = Variables.file?.FullName;
 
