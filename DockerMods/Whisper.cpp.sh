@@ -1,8 +1,9 @@
 # ----------------------------------------------------------------------------------------------------
 # Name: Whisper.cpp
-# Description: Installs the whisper.cpp CPU-only binary and downloads the ggml-small model (multilingual).
+# Description: Installs the whisper.cpp binary with Vulkan support and downloads the ggml-small model
+#              into /app/common/whisper-model with a model.bin symlink.
 # Author: OpenAI-Assistant
-# Revision: 10
+# Revision: 11
 # Icon: https://meta-l.cdn.bubble.io/cdn-cgi/image/w=64,h=64,f=auto,dpr=2,fit=contain/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -13,19 +14,22 @@ log() {
     echo "[whisper.cpp] $1"
 }
 
-INSTALL_ROOT="/app/data/whispercpp"
-BIN_DIR="${INSTALL_ROOT}/bin"
-MODEL_DIR="${INSTALL_ROOT}/models"
+BIN_ROOT="/app/common/whispercpp"
+BIN_DIR="${BIN_ROOT}/bin"
+MODEL_DIR="/app/common/whisper-model"
+MODEL_FILE="${MODEL_DIR}/ggml-small.bin"
+MODEL_LINK="${MODEL_DIR}/model.bin"
 BIN_LINK="/usr/local/bin/whisper-cli"
 BIN_LINK_LEGACY="/usr/local/bin/whispercpp"
 VERSION="1.8.2"
-MODEL_FILE="${MODEL_DIR}/ggml-small.bin"
 MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
 
 if [ "${1:-}" = "--uninstall" ]; then
     log "Uninstall flag detected. Removing whisper.cpp binaries and models..."
     rm -f "${BIN_LINK}" "${BIN_LINK_LEGACY}" || true
-    rm -rf "${INSTALL_ROOT}"
+    rm -rf "${BIN_ROOT}"
+    rm -f "${MODEL_FILE}" "${MODEL_LINK}" || true
+    rmdir --ignore-fail-on-non-empty "${MODEL_DIR}" 2>/dev/null || true
     log "Uninstall complete."
     exit 0
 fi
@@ -39,7 +43,7 @@ if ! command -v glslc >/dev/null 2>&1; then
     exit 1
 fi
 
-log "Preparing directories under ${INSTALL_ROOT}."
+log "Preparing directories under ${BIN_ROOT} and ${MODEL_DIR}."
 mkdir -p "${BIN_DIR}" "${MODEL_DIR}"
 
 log "Building whisper.cpp v${VERSION} from source (no prebuilt binaries available)."
@@ -78,5 +82,8 @@ ln -sf "${BIN_DIR}/whisper-cli" "${BIN_LINK_LEGACY}"
 log "Downloading default multilingual model to ${MODEL_FILE}."
 curl -L "${MODEL_URL}" -o "${MODEL_FILE}"
 
-log "whisper.cpp installation complete. Use 'whisper-cli -f <audio.wav> -m ${MODEL_FILE}' to transcribe. (Legacy alias: whispercpp)"
+log "Creating symbolic link ${MODEL_LINK} -> ${MODEL_FILE}."
+ln -sfn "${MODEL_FILE}" "${MODEL_LINK}"
+
+log "whisper.cpp installation complete. Use 'whisper-cli --file <audio.wav> --model ${MODEL_LINK}' to transcribe. (Legacy alias: whispercpp)"
 exit 0
