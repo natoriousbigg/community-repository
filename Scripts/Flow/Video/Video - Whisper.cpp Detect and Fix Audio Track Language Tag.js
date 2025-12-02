@@ -3,7 +3,7 @@
  * @uid 08cf6e37-0c77-4c08-b8d3-2794f200882c
  * @description Samples each audio track with whisper-cli to detect the spoken language and normalizes the track language tags (ISO 639-1) without running a full transcription.
  * @author OpenAI-Assistant
- * @revision 16
+ * @revision 17
  * @output Languages updated
  * @output Languages unchanged
  * @output No audio tracks found
@@ -32,7 +32,7 @@ function Script(NoGpu) {
     const variableWhisper = (Variables['whisper'] || '').toString().trim();
     const variableModel = (Variables['whisper-model'] || '').toString().trim();
     const whisperCli = variableWhisper || Flow.GetToolPath('whisper-cli') || Flow.GetToolPath('whisper') || '/usr/local/bin/whisper-cli';
-    const modelPath = variableModel || '/app/data/whispercpp/models/ggml-small.bin';
+    const modelPath = variableModel || '/app/common/whisper-model/model.bin';
 
     const missing = [];
     if (!System.IO.File.Exists(whisperCli))
@@ -43,11 +43,11 @@ function Script(NoGpu) {
     if (missing.length > 0) {
         Logger.ELog(`[whisper-cli] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
         if (isWindows) {
-            Logger.ELog("[whisper-cli] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp/releases/ and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main, then set 'whisper' (binary) and 'whisper-model' (model) variables in this node's settings.");
+            Logger.ELog("[whisper-cli] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp/releases/ and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main, then set 'whisper' (binary) and 'whisper-model' (model) variables in this node's settings or install the 'Whisper.cpp - Medium Model & Solera VAD' DockerMod.");
         } else if (isDocker) {
-            Logger.ELog('[whisper-cli] Install the Whisper.cpp DockerMod to provision the binary and model.');
+            Logger.ELog("[whisper-cli] Install the Whisper.cpp DockerMod to provision the binary and model. You can also install the 'Whisper.cpp - Medium Model & Solera VAD' DockerMod for models.");
         } else {
-            Logger.ELog("[whisper-cli] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main, then set 'whisper' (binary) and 'whisper-model' (model) variables in this node's settings.");
+            Logger.ELog("[whisper-cli] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main, then set 'whisper' (binary) and 'whisper-model' (model) variables in this node's settings or install the 'Whisper.cpp - Medium Model & Solera VAD' DockerMod.");
         }
         return Flow.Fail('Whisper.cpp and/or model missing, please install and set variables');
     }

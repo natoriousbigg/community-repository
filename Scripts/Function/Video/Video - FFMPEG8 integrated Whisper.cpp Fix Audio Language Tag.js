@@ -3,7 +3,7 @@
  * @uid 1c6d6885-2cda-45bb-b38d-bb3c53809d7c
  * @description Uses ffmpeg with the integrated Whisper.cpp filter to detect spoken languages per audio track and normalizes the track language tags (ISO 639-1) without extracting audio.
  * @author OpenAI-Assistant
- * @revision 7
+ * @revision 8
  * @output Languages updated
  * @output Languages unchanged
  * @output No audio tracks found
@@ -55,25 +55,32 @@ function Script(UseGpuAcceleration, GpuDevice) {
         return -1;
     }
 
-    const modelDir = System.IO.Path.Combine(commonPath, 'whisper-models');
+    const modelDir = System.IO.Path.Combine(commonPath, 'whisper-model');
+    const legacyModelDir = System.IO.Path.Combine(commonPath, 'whisper-models');
     const modelOverride = (Variables['whisper-model'] || '').toString().trim();
-    const activeModel = System.IO.Path.Combine(modelDir, 'active-model.bin');
+    const modelLink = System.IO.Path.Combine(modelDir, 'model.bin');
+    const legacyActiveModel = System.IO.Path.Combine(legacyModelDir, 'active-model.bin');
     const modelCandidates = [];
 
-    if (modelOverride && System.IO.File.Exists(modelOverride))
-        modelCandidates.push(modelOverride);
+    const addModelCandidate = (candidate) => {
+        if (candidate && System.IO.File.Exists(candidate) && !modelCandidates.includes(candidate))
+            modelCandidates.push(candidate);
+    };
 
-    if (System.IO.File.Exists(activeModel))
-        modelCandidates.push(activeModel);
+    addModelCandidate(modelOverride);
+    addModelCandidate(modelLink);
+    addModelCandidate(legacyActiveModel);
 
-    if (System.IO.Directory.Exists(modelDir)) {
-        const binFiles = System.IO.Directory.GetFiles(modelDir, '*.bin') || [];
-        for (let i = 0; i < binFiles.length; i++) {
-            const file = binFiles[i];
-            if (file)
-                modelCandidates.push(file);
-        }
-    }
+    const collectBinFiles = (directory) => {
+        if (!System.IO.Directory.Exists(directory))
+            return;
+        const binFiles = System.IO.Directory.GetFiles(directory, '*.bin') || [];
+        for (let i = 0; i < binFiles.length; i++)
+            addModelCandidate(binFiles[i]);
+    };
+
+    collectBinFiles(modelDir);
+    collectBinFiles(legacyModelDir);
 
     let modelPath = '';
     for (let i = 0; i < modelCandidates.length; i++) {
@@ -85,7 +92,7 @@ function Script(UseGpuAcceleration, GpuDevice) {
     }
 
     if (!modelPath) {
-        const missingModelMsg = 'Installer DockerMod \'Whisper.cpp Model - Small\' or download manually at https://huggingface.co/ggerganov/whisper.cpp/tree/main and set variable "whisper-model"';
+        const missingModelMsg = 'Install DockerMod \'Whisper.cpp - Medium Model & Solera VAD\' or download manually at https://huggingface.co/ggerganov/whisper.cpp/tree/main and set variable "whisper-model"';
         Logger.ELog(`[ffmpeg-whisper] ${missingModelMsg}`);
         Flow.Fail(missingModelMsg);
         return -1;
