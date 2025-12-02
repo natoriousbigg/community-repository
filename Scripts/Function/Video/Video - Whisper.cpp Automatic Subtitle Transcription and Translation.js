@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 14
+ * @revision 15
  * @output Subtitles created
  * @output No audio tracks found
  * @param {bool} TranslateToEnglish Translate generated subtitles to English (default: false).
@@ -182,6 +182,29 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir, SkipE
         return true;
     };
 
+    const detectLanguage = (audioPath) => {
+        const args = [
+            '--model', modelPath,
+            '--file', audioPath,
+            '--detect-language', 'true'
+        ];
+
+        if (hasVad) {
+            args.push('--vad', 'true');
+            args.push('--vad-model', vadPath);
+        }
+
+        const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
+        if (process.exitCode !== 0) {
+            Logger.WLog(`[whisper-sub] Language detection failed: ${process.output}`);
+            return '';
+        }
+
+        const combinedOutput = [process.output, process.standardOutput, process.standardError].filter(Boolean).join('\n');
+        const match = combinedOutput.match(/auto-detected language:\s*([a-zA-Z-]+)/i);
+        return normalizeLanguage(match ? match[1] : '');
+    };
+
     const runWhisper = (audioPath, baseOutput, language, translateFlag) => {
         const args = [
             '--model', modelPath,
@@ -215,36 +238,38 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SubtitleSaveDir, SkipE
 
         const langMeta = normalizeLanguage(audio.Language);
 
-        if (langMeta && processedLanguages.has(langMeta)) {
-            Logger.ILog(`[whisper-sub] Skipping track ${i} because language '${langMeta}' was already processed.`);
-            continue;
-        }
-
-        if (skipExistingSubtitles && langMeta && hasExistingSubtitle(langMeta)) {
-            Logger.ILog(`[whisper-sub] Skipping track ${i} because subtitles for language '${langMeta}' already exist.`);
-            processedLanguages.add(langMeta);
-            continue;
-        }
-
         const audioSample = System.IO.Path.Combine(workingDir, `whisper_sub_track_${i}.wav`);
         if (!extractAudio(i, audioSample))
             return Flow.Fail('Whisper Execution Failed');
 
-        let detected = langMeta || 'auto';
+        const detectedFromAudio = detectLanguage(audioSample);
+        if (!detectedFromAudio) {
+            Logger.WLog(`[whisper-sub] Could not determine language for track ${i}.`);
+            return Flow.Fail('Whisper Execution Failed');
+        }
+
+        const detected = detectedFromAudio || langMeta || 'auto';
         let targetSrt = null;
+
+        if (processedLanguages.has(detected)) {
+            Logger.ILog(`[whisper-sub] Skipping track ${i} because language '${detected}' was already processed.`);
+            continue;
+        }
+
+        if (skipExistingSubtitles && hasExistingSubtitle(detected)) {
+            Logger.ILog(`[whisper-sub] Skipping track ${i} because subtitles for language '${detected}' already exist.`);
+            processedLanguages.add(detected);
+            continue;
+        }
 
         if (keepOriginal) {
             const tempBase = System.IO.Path.Combine(workingDir, `whisper_sub_track_${i}`);
-            const process = runWhisper(audioSample, tempBase, 'auto', false);
+            const process = runWhisper(audioSample, tempBase, detected || 'auto', false);
 
             if (process.exitCode !== 0) {
                 Logger.WLog(`[whisper-sub] whisper-cli failed for track ${i}: ${process.output}`);
                 return Flow.Fail('Whisper Execution Failed');
             }
-
-            const combinedOutput = [process.output, process.standardOutput, process.standardError].filter(Boolean).join('\n');
-            const match = combinedOutput.match(/auto-detected language:\s*([a-zA-Z-]+)/i);
-            detected = normalizeLanguage(match ? match[1] : '') || langMeta || 'auto';
 
             const srtPathTemp = `${tempBase}.srt`;
             if (!System.IO.File.Exists(srtPathTemp)) {
