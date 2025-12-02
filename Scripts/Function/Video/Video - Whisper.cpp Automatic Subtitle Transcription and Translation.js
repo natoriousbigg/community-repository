@@ -120,7 +120,7 @@ function Script(SubtitleLanguages, DeleteOriginalAfterTranslation, SubtitleSaveD
     if (System.IO.File.Exists(vadPath)) {
         hasVad = true;
     } else {
-        Logger.WLog("[whisper-sub] VAD Model missing and highly recommended. Download from https://huggingface.co/ggml-org/whisper-vad/tree/main and add variable 'whisper-vad'");
+        Logger.WLog("[whisper-sub] VAD Model missing and highly recommended. Download from https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin and add variable 'whisper-vad'");
     }
 
     const workingDir = Flow.TempPath || System.IO.Path.GetTempPath();
