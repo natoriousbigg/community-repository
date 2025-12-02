@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 23
+ * @revision 24
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English (default: false).
@@ -95,7 +95,15 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SkipExistingSubtitles 
     const modelOverride = (Variables['whisper-model'] || '').toString().trim();
     const vadOverride = (Variables['whisper-vad'] || '').toString().trim();
 
-    const whisperCli = whisperOverride || Flow.GetToolPath('whisper-cli') || Flow.GetToolPath('whisper') || '/app/common/whispercpp/bin/whisper-cli';
+    const whisperCandidates = [
+        whisperOverride,
+        '/usr/local/bin/whisper-cli',
+        Flow.GetToolPath('whisper-cli'),
+        Flow.GetToolPath('whisper'),
+        '/app/common/whispercpp/bin/whisper-cli'
+    ];
+
+    const whisperCli = whisperCandidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || whisperCandidates[whisperCandidates.length - 1];
     const modelPath = modelOverride || '/app/common/whispercpp/models/model.bin';
     const vadPath = vadOverride || '/app/common/whispercpp/models/vad-model.bin';
 
@@ -167,6 +175,32 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SkipExistingSubtitles 
     };
     let created = false;
 
+    const durationSeconds = vi?.Duration?.TotalSeconds || vi?.VideoStreams?.[0]?.Duration?.TotalSeconds || 0;
+    const sampleLength = Math.min(600, Math.max(1, durationSeconds || 600));
+    const sampleStart = Math.max(0, Math.min(600, Math.max(0, (durationSeconds || 0) - sampleLength)));
+
+    const extractAudioSample = (trackIndex, outputPath) => {
+        if (System.IO.File.Exists(outputPath))
+            System.IO.File.Delete(outputPath);
+
+        const args = [
+            '-hide_banner', '-y',
+            '-ss', sampleStart.toFixed(2),
+            '-t', sampleLength.toFixed(2),
+            '-i', filePath,
+            '-map', `0:a:${trackIndex}`,
+            '-vn', '-acodec', 'pcm_s16le', '-ac', '1', '-ar', '16000',
+            outputPath
+        ];
+
+        const extract = Flow.Execute({ command: ffmpeg, argumentList: args, logOutput: false });
+        if (extract.exitCode !== 0) {
+            Logger.WLog(`[whisper-sub] Failed to extract sample for track ${trackIndex}: ${extract.output}`);
+            return false;
+        }
+        return true;
+    };
+
     const extractAudio = (trackIndex, outputPath) => {
         if (System.IO.File.Exists(outputPath))
             System.IO.File.Delete(outputPath);
@@ -187,7 +221,7 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SkipExistingSubtitles 
         return true;
     };
 
-    const detectLanguage = (audioPath) => {
+    const detectLanguage = (audioPath, useVad = true) => {
         const args = [
             '--model', modelPath,
             '--file', audioPath,
@@ -201,7 +235,7 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SkipExistingSubtitles 
         if (!debugMode)
             args.push('--no-prints', 'true');
 
-        if (hasVad) {
+        if (useVad && hasVad) {
             args.push('--vad', 'true');
             args.push('--vad-model', vadPath);
         }
@@ -243,6 +277,37 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SkipExistingSubtitles 
         return process;
     };
 
+    const detectedLanguages = new Map();
+
+    for (let i = 0; i < audioStreams.length; i++) {
+        const audio = audioStreams[i];
+        if (!audio || audio.Deleted)
+            continue;
+
+        const description = (audio.Description || '').toString().toLowerCase();
+        if (description.includes('commentary')) {
+            Logger.ILog(`[whisper-sub] Skipping track ${i} because it is commentary.`);
+            continue;
+        }
+
+        const samplePath = System.IO.Path.Combine(workingDir, `whisper_sub_track_${i}_sample.wav`);
+        if (!extractAudioSample(i, samplePath))
+            return Flow.Fail('Whisper Execution Failed');
+
+        const detectedFromSample = detectLanguage(samplePath, false);
+        if (!detectedFromSample) {
+            Logger.WLog(`[whisper-sub] Could not determine language for track ${i} during sample detection.`);
+            return Flow.Fail('Whisper Execution Failed');
+        }
+
+        detectedLanguages.set(i, detectedFromSample);
+
+        try {
+            if (System.IO.File.Exists(samplePath))
+                System.IO.File.Delete(samplePath);
+        } catch { }
+    }
+
     for (let i = 0; i < audioStreams.length; i++) {
         const audio = audioStreams[i];
         if (!audio || audio.Deleted)
@@ -256,15 +321,10 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SkipExistingSubtitles 
 
         const langMeta = normalizeLanguage(audio.Language);
 
+        const detectedFromAudio = detectedLanguages.get(i) || '';
         const audioSample = System.IO.Path.Combine(workingDir, `whisper_sub_track_${i}.wav`);
         if (!extractAudio(i, audioSample))
             return Flow.Fail('Whisper Execution Failed');
-
-        const detectedFromAudio = detectLanguage(audioSample);
-        if (!detectedFromAudio) {
-            Logger.WLog(`[whisper-sub] Could not determine language for track ${i}.`);
-            return Flow.Fail('Whisper Execution Failed');
-        }
 
         const detected = detectedFromAudio || langMeta || 'auto';
         let targetSrt = null;
