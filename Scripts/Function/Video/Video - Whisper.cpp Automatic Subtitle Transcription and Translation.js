@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 21
+ * @revision 22
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English (default: false).
@@ -200,6 +200,11 @@ function Script(TranslateToEnglish, KeepOriginalLanguage, SkipExistingSubtitles 
 
         if (!debugMode)
             args.push('--no-prints', 'true');
+
+        if (hasVad) {
+            args.push('--vad', 'true');
+            args.push('--vad-model', vadPath);
+        }
 
         const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
         if (process.exitCode !== 0) {
