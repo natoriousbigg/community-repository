@@ -271,6 +271,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
         if (useVad && hasVad) {
             args.push('--vad', 'true');
             args.push('--vad-model', vadPath);
+            args.push('--vad-threshold', '0.7');
         }
 
         const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
@@ -306,6 +307,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
         if (hasVad) {
             args.push('--vad', 'true');
             args.push('--vad-model', vadPath);
+            args.push('--vad-threshold', '0.7');
         }
 
         const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
