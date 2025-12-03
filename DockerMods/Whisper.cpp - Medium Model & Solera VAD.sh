@@ -1,9 +1,9 @@
 # ----------------------------------------------------------------------------------------------------
 # Name: Whisper.cpp - Medium Model & Solera VAD
-# Description: Downloads the ggml-medium Whisper.cpp model and Silero VAD model into /app/common/whispercpp/models,
-#              creating symlinks model.bin and vad-model.bin for default usage.
+# Description: Downloads the ggml-medium Whisper.cpp multilingual and English models plus the Silero VAD model into
+#              /app/common/whispercpp/models.
 # Author: OpenAI-Assistant
-# Revision: 3
+# Revision: 4
 # Icon: https://meta-l.cdn.bubble.io/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -16,15 +16,15 @@ log() {
 
 MODEL_DIR="/app/common/whispercpp/models"
 MODEL_FILE="${MODEL_DIR}/ggml-medium.bin"
-MODEL_LINK="${MODEL_DIR}/model.bin"
+MODEL_EN_FILE="${MODEL_DIR}/ggml-medium.en.bin"
 VAD_FILE="${MODEL_DIR}/ggml-silero-v6.2.0.bin"
-VAD_LINK="${MODEL_DIR}/vad-model.bin"
 MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin"
+MODEL_EN_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin"
 VAD_URL="https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin"
 
 if [[ "${1:-}" == "--uninstall" ]]; then
-    log "Uninstall flag detected. Removing models and symlinks from ${MODEL_DIR}."
-    rm -f "${MODEL_FILE}" "${MODEL_LINK}" "${VAD_FILE}" "${VAD_LINK}" || true
+    log "Uninstall flag detected. Removing models from ${MODEL_DIR}."
+    rm -f "${MODEL_FILE}" "${MODEL_EN_FILE}" "${VAD_FILE}" || true
     rmdir --ignore-fail-on-non-empty "${MODEL_DIR}" 2>/dev/null || true
     exit 0
 fi
@@ -38,15 +38,14 @@ fi
 log "Creating model directory at ${MODEL_DIR}."
 mkdir -p "${MODEL_DIR}"
 
-log "Downloading ggml-medium Whisper.cpp model from Hugging Face."
+log "Downloading ggml-medium Whisper.cpp multilingual model from Hugging Face."
 curl -L --fail "${MODEL_URL}" -o "${MODEL_FILE}"
+
+log "Downloading ggml-medium Whisper.cpp English model from Hugging Face."
+curl -L --fail "${MODEL_EN_URL}" -o "${MODEL_EN_FILE}"
 
 log "Downloading Silero VAD model from Hugging Face."
 curl -L --fail "${VAD_URL}" -o "${VAD_FILE}"
 
-log "Creating symbolic links ${MODEL_LINK} -> ${MODEL_FILE} and ${VAD_LINK} -> ${VAD_FILE}."
-ln -sfn "${MODEL_FILE}" "${MODEL_LINK}"
-ln -sfn "${VAD_FILE}" "${VAD_LINK}"
-
-log "Download complete. Models available in ${MODEL_DIR} (symlinks: ${MODEL_LINK}, ${VAD_LINK})."
+log "Download complete. Models available in ${MODEL_DIR}."
 exit 0

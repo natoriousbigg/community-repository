@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 25
+ * @revision 26
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English.
@@ -96,6 +96,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
     const whisperOverride = (Variables['whisper'] || '').toString().trim();
     const modelOverride = (Variables['whisper-model'] || '').toString().trim();
+    const englishOverride = (Variables['whisper-en-model'] || '').toString().trim();
     const vadOverride = (Variables['whisper-vad'] || '').toString().trim();
 
     const whisperCandidates = [
@@ -107,26 +108,57 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
     ];
 
     const whisperCli = whisperCandidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || whisperCandidates[whisperCandidates.length - 1];
-    const modelPath = modelOverride || '/app/common/whispercpp/models/model.bin';
-    const vadPath = vadOverride || '/app/common/whispercpp/models/vad-model.bin';
+
+    const installRoot = '/app/common/whispercpp';
+    const modelDir = System.IO.Path.Combine(installRoot, 'models');
+    const legacyModelLink = System.IO.Path.Combine(modelDir, 'model.bin');
+    const pickFirstExisting = (candidates) => candidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || '';
+
+    const overrideLower = modelOverride.toLowerCase();
+    const multilingualModel = pickFirstExisting([
+        modelOverride && !overrideLower.includes('.en.') ? modelOverride : '',
+        System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
+        System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
+        System.IO.Path.Combine(modelDir, 'ggml-medium.bin'),
+        System.IO.Path.Combine(modelDir, 'ggml-small.bin'),
+        legacyModelLink
+    ]);
+
+    let englishModel = pickFirstExisting([
+        englishOverride,
+        modelOverride && overrideLower.includes('.en.') ? modelOverride : '',
+        System.IO.Path.Combine(modelDir, 'ggml-large-v3.en.bin'),
+        System.IO.Path.Combine(modelDir, 'ggml-large.en.bin'),
+        System.IO.Path.Combine(modelDir, 'ggml-medium.en.bin'),
+        System.IO.Path.Combine(modelDir, 'ggml-small.en.bin')
+    ]);
+
+    const hasDedicatedEnglish = !!englishModel;
+    if (!englishModel || !System.IO.File.Exists(englishModel))
+        englishModel = multilingualModel;
+
+    const vadCandidates = [
+        vadOverride,
+        System.IO.Path.Combine(modelDir, 'ggml-silero-v6.2.0.bin'),
+        System.IO.Path.Combine(modelDir, 'vad-model.bin')
+    ];
+    const vadPath = pickFirstExisting(vadCandidates);
 
     const missing = [];
     if (!System.IO.File.Exists(whisperCli))
         missing.push(`binary at '${whisperCli}'`);
-    if (!System.IO.File.Exists(modelPath))
-        missing.push(`model at '${modelPath}'`);
+    if (!multilingualModel)
+        missing.push('multilingual Whisper.cpp model (e.g., ggml-medium.bin or ggml-small.bin)');
 
     if (missing.length > 0) {
         Logger.ELog(`[whisper-sub] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
-        if (isWindows) {
-            Logger.ELog("[whisper-sub] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp/releases/ and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main, then set 'whisper' (binary) and 'whisper-model' (model) variables in this node's settings or install the Whisper.cpp DockerMod and model DockerMods.");
-        } else if (isDocker) {
-            Logger.ELog("[whisper-sub] Install the Whisper.cpp DockerMod to provision the binary and /app/common/whispercpp/models/model.bin symlink. You can also install the 'Whisper.cpp - Medium Model & Solera VAD' DockerMod for additional models.");
-        } else {
-            Logger.ELog("[whisper-sub] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main, then set 'whisper' (binary) and 'whisper-model' (model) variables in this node's settings or install the Whisper.cpp DockerMod and model DockerMods.");
-        }
-        return Flow.Fail('Whisper.cpp and/or model missing, please install and set variables');
+        const installMsg = "Install the Whisper.cpp DockerMod for the binary and small models plus the 'Whisper.cpp - Medium Model & Solera VAD' DockerMod for medium and VAD support, or provide paths via 'whisper' and 'whisper-model' (and optionally 'whisper-en-model').";
+        Logger.ELog(`[whisper-sub] ${installMsg}`);
+        return Flow.Fail('Whisper.cpp and/or required model missing, please install and set variables');
     }
+
+    if (!hasDedicatedEnglish)
+        Logger.WLog('[whisper-sub] English Whisper.cpp model not found; using multilingual model for English audio.');
 
     let hasVad = false;
     if (System.IO.File.Exists(vadPath)) {
@@ -227,7 +259,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
     const detectLanguage = (audioPath, useVad = true) => {
         const args = [
-            '--model', modelPath,
+            '--model', multilingualModel,
             '--file', audioPath,
             '--detect-language', 'true',
             '--language', 'auto'
@@ -252,9 +284,9 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
         return normalizeLanguage(match ? match[1] : '');
     };
 
-    const runWhisper = (audioPath, baseOutput, language, translateFlag) => {
+    const runWhisper = (audioPath, baseOutput, language, translateFlag, modelToUse) => {
         const args = [
-            '--model', modelPath,
+            '--model', modelToUse,
             '--file', audioPath,
             '--language', language || 'auto',
             '--output-srt', 'true',
@@ -360,7 +392,9 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
         if (keepOriginal) {
             const tempBase = System.IO.Path.Combine(workingDir, `whisper_sub_track_${i}`);
-            const process = runWhisper(audioSample, tempBase, detected || 'auto', false);
+            const assumedLanguage = normalizeLanguage(detectedFromAudio || langMeta);
+            const transcriptModel = assumedLanguage === 'en' ? englishModel : multilingualModel;
+            const process = runWhisper(audioSample, tempBase, detected || 'auto', false, transcriptModel);
 
             if (process.exitCode !== 0) {
                 Logger.WLog(`[whisper-sub] whisper-cli failed for track ${i}: ${process.output}`);
@@ -422,7 +456,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
                     }
 
                     const englishBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
-                    const englishProcess = runWhisper(audioSample, englishBase, 'en', false);
+                    const englishProcess = runWhisper(audioSample, englishBase, 'en', false, englishModel);
                     if (englishProcess.exitCode !== 0) {
                         Logger.WLog(`[whisper-sub] English transcription failed for track ${i}: ${englishProcess.output}`);
                         return Flow.Fail('Whisper Execution Failed');
@@ -447,7 +481,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
                 continue;
             }
             const translateBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
-            const translateProcess = runWhisper(audioSample, translateBase, sourceLang, true);
+            const translateProcess = runWhisper(audioSample, translateBase, sourceLang, true, multilingualModel);
             if (translateProcess.exitCode !== 0) {
                 Logger.WLog(`[whisper-sub] Translation to English failed for track ${i}: ${translateProcess.output}`);
                 return Flow.Fail('Whisper Execution Failed');
