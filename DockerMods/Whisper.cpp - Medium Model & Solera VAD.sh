@@ -3,7 +3,7 @@
 # Description: Downloads the ggml-medium Whisper.cpp multilingual and English models plus the Silero VAD model into
 #              /app/common/whispercpp/models.
 # Author: OpenAI-Assistant
-# Revision: 5
+# Revision: 7
 # Icon: https://meta-l.cdn.bubble.io/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -40,14 +40,26 @@ fi
 log "Creating model directory at ${MODEL_DIR}."
 mkdir -p "${MODEL_DIR}"
 
-log "Downloading ggml-medium Whisper.cpp multilingual model from Hugging Face."
-curl -L --fail "${MODEL_URL}" -o "${MODEL_FILE}"
+if [[ -f "${MODEL_FILE}" ]]; then
+    log "Multilingual model already present at ${MODEL_FILE}; skipping download."
+else
+    log "Downloading ggml-medium Whisper.cpp multilingual model from Hugging Face."
+    curl -L --fail "${MODEL_URL}" -o "${MODEL_FILE}"
+fi
 
-log "Downloading ggml-medium Whisper.cpp English model from Hugging Face."
-curl -L --fail "${MODEL_EN_URL}" -o "${MODEL_EN_FILE}"
+if [[ -f "${MODEL_EN_FILE}" ]]; then
+    log "English model already present at ${MODEL_EN_FILE}; skipping download."
+else
+    log "Downloading ggml-medium Whisper.cpp English model from Hugging Face."
+    curl -L --fail "${MODEL_EN_URL}" -o "${MODEL_EN_FILE}"
+fi
 
-log "Downloading Silero VAD model from Hugging Face."
-curl -L --fail "${VAD_URL}" -o "${VAD_FILE}"
+if [[ -f "${VAD_FILE}" ]]; then
+    log "Silero VAD model already present at ${VAD_FILE}; skipping download."
+else
+    log "Downloading Silero VAD model from Hugging Face."
+    curl -L --fail "${VAD_URL}" -o "${VAD_FILE}"
+fi
 
 log "Downloading TinyDiarize English Whisper.cpp model from Hugging Face."
 curl -L --fail "${TINY_DIARIZE_EN_URL}" -o "${TINY_DIARIZE_EN_FILE}"

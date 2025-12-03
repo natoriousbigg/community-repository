@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 31
+ * @revision 36
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English.
@@ -129,10 +129,9 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
     let englishModel = pickFirstExisting([
         englishOverride,
         modelOverride && overrideLower.includes('.en.') ? modelOverride : '',
-        tinyDiarizeEnglishModel,
+        System.IO.Path.Combine(modelDir, 'ggml-medium.en.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-large-v3.en.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-large.en.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-medium.en.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-small.en.bin')
     ]);
 
@@ -297,10 +296,10 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
             '--output-file', baseOutput,
             '--max-context', '48',
             '--entropy-thold', '2.8',
-            '--freq-thold', '100',
-            '--suppress-blank', 'true',
             '--no-speech-thold', '0.6',
-            '--print-progress', 'true'
+            '--print-progress', 'true',
+            '--split-on-word', 'true',
+            '--max-len', '80'
         ];
 
         if (diarizationMode === 'tinydiarize')
