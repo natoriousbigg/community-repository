@@ -226,7 +226,6 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
             '-i', filePath,
             '-map', `0:a:${trackIndex}`,
             '-vn', '-acodec', 'pcm_s16le', '-ac', '1', '-ar', '16000',
-            '-af', 'silenceremove=stop_periods=-1:stop_duration=1:stop_threshold=-50dB',
             outputPath
         ];
 
@@ -247,7 +246,6 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
             '-i', filePath,
             '-map', `0:a:${trackIndex}`,
             '-vn', '-acodec', 'pcm_s16le', '-ac', '1', '-ar', '16000',
-            '-af', 'silenceremove=stop_periods=-1:stop_duration=1:stop_threshold=-50dB',
             outputPath
         ];
 
