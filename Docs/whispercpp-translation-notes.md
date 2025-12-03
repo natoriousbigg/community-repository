@@ -17,7 +17,7 @@ Use the same diarization and silence-handling switches for both passes so timing
 ```bash
 ./main \
   -m models/ggml-medium.bin -f input.wav -osrt \
-  --diarize true --split-on-word true --max-len 20 --max-context 0 \
+  --diarize true --split-on-word true --max-len 80 --max-context 0 \
   --no-speech-thold 0.6
 ```
 
@@ -25,7 +25,7 @@ Use the same diarization and silence-handling switches for both passes so timing
 ```bash
 ./main \
   -m models/ggml-medium.bin -f input.wav -osrt --translate true \
-  --diarize true --split-on-word true --max-len 20 --max-context 0 \
+  --diarize true --split-on-word true --max-len 80 --max-context 0 \
   --no-speech-thold 0.6
 ```
 

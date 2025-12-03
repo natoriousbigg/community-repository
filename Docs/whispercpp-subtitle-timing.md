@@ -10,7 +10,7 @@ When Whisper.cpp leaves subtitles on screen during silence, tighten its segmenti
 
 ## Keep subtitle segments short
 - **Split on word boundaries**: `--split-on-word true` avoids timing drift by snapping cuts to words instead of token boundaries.
-- **Cap segment length**: `--max-len 20` (roughly a line of ~16 words) forces Whisper.cpp to close a segment instead of letting it accumulate a long chunk that lingers on-screen.
+- **Cap segment length**: `--max-len 80` (roughly four lines of ~16 words) forces Whisper.cpp to close a segment instead of letting it accumulate a long chunk that lingers on-screen.
 - **Limit context carry-over**: `--max-context 0` stops the model from reusing too much prior text, which can otherwise encourage longer, merged segments.
 
 ## Example command
@@ -20,7 +20,7 @@ When Whisper.cpp leaves subtitles on screen during silence, tighten its segmenti
   --diarize true \
   --vad-filter true --vad-thold 0.4 \
   --no-speech-thold 0.6 \
-  --split-on-word true --max-len 20 --max-context 0
+  --split-on-word true --max-len 80 --max-context 0
 ```
 
 Start with these values, then adjust `--vad-thold` and `--max-len` until subtitle lines cut off soon after speech ends without chopping words mid-sentence.
