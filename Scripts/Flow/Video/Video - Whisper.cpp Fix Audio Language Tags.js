@@ -3,7 +3,7 @@
  * @uid 08cf6e37-0c77-4c08-b8d3-2794f200882c
  * @description Samples each audio track with whisper-cli to detect the spoken language and normalizes the track language tags (ISO 639-1) without running a full transcription.
  * @author OpenAI-Assistant
- * @revision 19
+ * @revision 20
  * @output Languages updated
  * @output Languages unchanged
  * @output No audio tracks found
@@ -32,24 +32,31 @@ function Script(NoGpu) {
     const variableWhisper = (Variables['whisper'] || '').toString().trim();
     const variableModel = (Variables['whisper-model'] || '').toString().trim();
     const whisperCli = variableWhisper || Flow.GetToolPath('whisper-cli') || Flow.GetToolPath('whisper') || '/usr/local/bin/whisper-cli';
-    const modelPath = variableModel || '/app/common/whispercpp/models/model.bin';
+
+    const installRoot = '/app/common/whispercpp';
+    const modelDir = System.IO.Path.Combine(installRoot, 'models');
+    const legacyModelLink = System.IO.Path.Combine(modelDir, 'model.bin');
+    const pickFirstExisting = (candidates) => candidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || '';
+    const multilingualModel = pickFirstExisting([
+        variableModel && !variableModel.toLowerCase().includes('.en.') ? variableModel : '',
+        System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
+        System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
+        System.IO.Path.Combine(modelDir, 'ggml-medium.bin'),
+        System.IO.Path.Combine(modelDir, 'ggml-small.bin'),
+        legacyModelLink
+    ]);
 
     const missing = [];
     if (!System.IO.File.Exists(whisperCli))
         missing.push(`binary at '${whisperCli}'`);
-    if (!System.IO.File.Exists(modelPath))
-        missing.push(`model at '${modelPath}'`);
+    if (!multilingualModel)
+        missing.push('multilingual Whisper.cpp model (e.g., ggml-medium.bin or ggml-small.bin)');
 
     if (missing.length > 0) {
         Logger.ELog(`[whisper-cli] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
-        if (isWindows) {
-            Logger.ELog("[whisper-cli] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp/releases/ and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main, then set 'whisper' (binary) and 'whisper-model' (model) variables in this node's settings or install the Whisper.cpp DockerMod and model DockerMods.");
-        } else if (isDocker) {
-            Logger.ELog("[whisper-cli] Install the Whisper.cpp DockerMod to provision the binary and /app/common/whispercpp/models/model.bin symlink. You can also install the 'Whisper.cpp - Medium Model & Solera VAD' DockerMod for additional models.");
-        } else {
-            Logger.ELog("[whisper-cli] Install whisper.cpp from https://github.com/ggml-org/whisper.cpp and download models from https://huggingface.co/ggerganov/whisper.cpp/tree/main, then set 'whisper' (binary) and 'whisper-model' (model) variables in this node's settings or install the Whisper.cpp DockerMod and model DockerMods.");
-        }
-        return Flow.Fail('Whisper.cpp and/or model missing, please install and set variables');
+        const installMsg = "Install the Whisper.cpp DockerMod for the binary and small models plus the 'Whisper.cpp - Medium Model & Solera VAD' DockerMod for medium and VAD support, or provide paths via 'whisper' and 'whisper-model' (and optionally 'whisper-en-model').";
+        Logger.ELog(`[whisper-cli] ${installMsg}`);
+        return Flow.Fail('Whisper.cpp and/or required model missing, please install and set variables');
     }
 
     const parseBoolean = (value, fallback = false) => {
@@ -120,7 +127,7 @@ function Script(NoGpu) {
         }
 
         Logger.ILog(`[whisper-cli] Detecting language for track ${i} using whisper-cli (detection only).`);
-        const whisperArgs = ['--model', modelPath, '--file', sampleFile, '--language', 'auto', '--detect-language', 'true'];
+        const whisperArgs = ['--model', multilingualModel, '--file', sampleFile, '--language', 'auto', '--detect-language', 'true'];
         if (disableGpu)
             whisperArgs.push('--no-gpu');
 

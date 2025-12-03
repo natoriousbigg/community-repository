@@ -3,7 +3,7 @@
  * @uid 1c6d6885-2cda-45bb-b38d-bb3c53809d7c
  * @description Uses ffmpeg with the integrated Whisper.cpp filter to detect spoken languages per audio track and normalizes the track language tags (ISO 639-1) without extracting audio.
  * @author OpenAI-Assistant
- * @revision 11
+ * @revision 12
  * @output Languages updated
  * @output Languages unchanged
  * @output No audio tracks found
@@ -57,22 +57,30 @@ function Script(UseGpuAcceleration, GpuDevice) {
 
     const installRoot = '/app/common/whispercpp';
     const modelDir = System.IO.Path.Combine(installRoot, 'models');
+    const legacyModelLink = System.IO.Path.Combine(modelDir, 'model.bin');
     const modelOverride = (Variables['whisper-model'] || '').toString().trim();
-    const modelLink = System.IO.Path.Combine(modelDir, 'model.bin');
-    const modelCandidates = [];
+    const overrideLower = modelOverride.toLowerCase();
 
+    const modelCandidates = [];
     const addModelCandidate = (candidate) => {
         if (candidate && System.IO.File.Exists(candidate) && !modelCandidates.includes(candidate))
             modelCandidates.push(candidate);
     };
 
-    addModelCandidate(modelOverride);
-    addModelCandidate(modelLink);
+    addModelCandidate(modelOverride && !overrideLower.includes('.en.') ? modelOverride : '');
+    addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'));
+    addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-large.bin'));
+    addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-medium.bin'));
+    addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-small.bin'));
+    addModelCandidate(legacyModelLink);
+    addModelCandidate(modelOverride && overrideLower.includes('.en.') ? modelOverride : '');
+    addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-medium.en.bin'));
+    addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-small.en.bin'));
 
     const modelPath = modelCandidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || '';
 
     if (!modelPath) {
-        const missingModelMsg = 'Install the Whisper.cpp DockerMod or model DockerMods (e.g., Medium Model & Solera VAD) or download manually at https://huggingface.co/ggerganov/whisper.cpp/tree/main and set variable "whisper-model" pointing to /app/common/whispercpp/models/model.bin';
+        const missingModelMsg = "Install the Whisper.cpp DockerMod for the binary and small models plus the 'Whisper.cpp - Medium Model & Solera VAD' DockerMod for medium and VAD support, or provide paths via 'whisper' and 'whisper-model' (and optionally 'whisper-en-model').";
         Logger.ELog(`[ffmpeg-whisper] ${missingModelMsg}`);
         Flow.Fail(missingModelMsg);
         return -1;
