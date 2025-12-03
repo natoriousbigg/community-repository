@@ -17,16 +17,16 @@ Use the same diarization and silence-handling switches for both passes so timing
 ```bash
 ./main \
   -m models/ggml-medium.bin -f input.wav -osrt \
-  --diarize true --split-on-word true --max-context 0 \
-  --freq-thold 100 --suppress-blank true --no-speech-thold 0.6
+  --diarize true --split-on-word true --max-len 20 --max-context 0 \
+  --no-speech-thold 0.6
 ```
 
 **Translation (English)**
 ```bash
 ./main \
   -m models/ggml-medium.bin -f input.wav -osrt --translate true \
-  --diarize true --split-on-word true --max-context 0 \
-  --freq-thold 100 --suppress-blank true --no-speech-thold 0.6
+  --diarize true --split-on-word true --max-len 20 --max-context 0 \
+  --no-speech-thold 0.6
 ```
 
-Adjust `--freq-thold` and `--no-speech-thold` to control how aggressively whisper.cpp cuts off segments during silence; higher values shorten on-screen subtitles when speech pauses.
+Adjust `--no-speech-thold` to control how aggressively whisper.cpp cuts off segments during silence; higher values shorten on-screen subtitles when speech pauses.
