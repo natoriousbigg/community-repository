@@ -111,7 +111,6 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
     const installRoot = '/app/common/whispercpp';
     const modelDir = System.IO.Path.Combine(installRoot, 'models');
-    const legacyModelLink = System.IO.Path.Combine(modelDir, 'model.bin');
     const pickFirstExisting = (candidates) => candidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || '';
 
     const overrideLower = modelOverride.toLowerCase();
@@ -120,8 +119,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
         System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-medium.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-small.bin'),
-        legacyModelLink
+        System.IO.Path.Combine(modelDir, 'ggml-small.bin')
     ]);
 
     let englishModel = pickFirstExisting([
@@ -139,8 +137,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
     const vadCandidates = [
         vadOverride,
-        System.IO.Path.Combine(modelDir, 'ggml-silero-v6.2.0.bin'),
-        System.IO.Path.Combine(modelDir, 'vad-model.bin')
+        System.IO.Path.Combine(modelDir, 'ggml-silero-v6.2.0.bin')
     ];
     const vadPath = pickFirstExisting(vadCandidates);
 
@@ -257,6 +254,17 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
         return true;
     };
 
+    const appendVadParameters = (args, enabled) => {
+        if (!enabled || !hasVad)
+            return;
+
+        args.push('--vad', 'true');
+        args.push('--vad-model', vadPath);
+        args.push('--vad-threshold', '0.9');
+        args.push('--vad-min-silence-duration-ms', '100');
+        args.push('--vad-speech-pad-ms', '50');
+    };
+
     const detectLanguage = (audioPath, useVad = true) => {
         const args = [
             '--model', multilingualModel,
@@ -268,11 +276,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
         if (disableGpu)
             args.push('--no-gpu', 'true');
 
-        if (useVad && hasVad) {
-            args.push('--vad', 'true');
-            args.push('--vad-model', vadPath);
-            args.push('--vad-threshold', '0.7');
-        }
+        appendVadParameters(args, useVad);
 
         const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
         if (process.exitCode !== 0) {
@@ -293,11 +297,12 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
             '--output-srt', 'true',
             '--output-file', baseOutput,
             '--max-context', '48',
-            '--entropy-thold', '2.8',
-            '--no-speech-thold', '0.6',
+            '--entropy-thold', '3.0',
+            '--word-thold', '0.02',
+            '--no-speech-thold', '0.8',
             '--print-progress', 'true',
             '--split-on-word', 'true',
-            '--max-len', '80'
+            '--max-len', '60'
         ];
 
         if (disableGpu)
@@ -308,11 +313,8 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
         if (translateFlag)
             args.push('--translate', 'true');
-        if (hasVad) {
-            args.push('--vad', 'true');
-            args.push('--vad-model', vadPath);
-            args.push('--vad-threshold', '0.7');
-        }
+
+        appendVadParameters(args, true);
 
         const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
         return process;
