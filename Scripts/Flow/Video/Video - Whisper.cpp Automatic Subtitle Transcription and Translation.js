@@ -124,8 +124,6 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
         legacyModelLink
     ]);
 
-    const tinyDiarizeEnglishModel = System.IO.Path.Combine(modelDir, 'ggml-small.en-tdrz.bin');
-
     let englishModel = pickFirstExisting([
         englishOverride,
         modelOverride && overrideLower.includes('.en.') ? modelOverride : '',
@@ -287,7 +285,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
         return normalizeLanguage(match ? match[1] : '');
     };
 
-    const runWhisper = (audioPath, baseOutput, language, translateFlag, modelToUse, diarizationMode = 'none') => {
+    const runWhisper = (audioPath, baseOutput, language, translateFlag, modelToUse) => {
         const args = [
             '--model', modelToUse,
             '--file', audioPath,
@@ -301,12 +299,6 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
             '--split-on-word', 'true',
             '--max-len', '80'
         ];
-
-        if (diarizationMode === 'tinydiarize')
-            args.push('--tinydiarize', 'true');
-
-        if (diarizationMode === 'diarize')
-            args.push('--diarize', 'true');
 
         if (disableGpu)
             args.push('--no-gpu', 'true');
@@ -410,8 +402,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
             const tempBase = System.IO.Path.Combine(workingDir, `whisper_sub_track_${i}`);
             const assumedLanguage = normalizeLanguage(detectedFromAudio || langMeta);
             const transcriptModel = assumedLanguage === 'en' ? englishModel : multilingualModel;
-            const diarizationMode = assumedLanguage === 'en' ? 'tinydiarize' : 'diarize';
-            const process = runWhisper(audioSample, tempBase, detected || 'auto', false, transcriptModel, diarizationMode);
+            const process = runWhisper(audioSample, tempBase, detected || 'auto', false, transcriptModel);
 
             if (process.exitCode !== 0) {
                 Logger.WLog(`[whisper-sub] whisper-cli failed for track ${i}: ${process.output}`);
@@ -473,7 +464,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
                     }
 
                     const englishBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
-                    const englishProcess = runWhisper(audioSample, englishBase, 'en', false, englishModel, 'tinydiarize');
+                    const englishProcess = runWhisper(audioSample, englishBase, 'en', false, englishModel);
                     if (englishProcess.exitCode !== 0) {
                         Logger.WLog(`[whisper-sub] English transcription failed for track ${i}: ${englishProcess.output}`);
                         return Flow.Fail('Whisper Execution Failed');
@@ -498,7 +489,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
                 continue;
             }
             const translateBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
-            const translateProcess = runWhisper(audioSample, translateBase, sourceLang, true, multilingualModel, 'diarize');
+            const translateProcess = runWhisper(audioSample, translateBase, sourceLang, true, multilingualModel);
             if (translateProcess.exitCode !== 0) {
                 Logger.WLog(`[whisper-sub] Translation to English failed for track ${i}: ${translateProcess.output}`);
                 return Flow.Fail('Whisper Execution Failed');
