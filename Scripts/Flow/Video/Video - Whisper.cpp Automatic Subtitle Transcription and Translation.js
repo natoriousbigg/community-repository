@@ -263,7 +263,9 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
         args.push('--vad', 'true');
         args.push('--vad-model', vadPath);
-        args.push('--vad-threshold', '0.7');
+        args.push('--vad-threshold', '0.9');
+        args.push('--vad-min-silence-duration-ms', '100');
+        args.push('--vad-speech-pad-ms', '50');
     };
 
     const detectLanguage = (audioPath, useVad = true) => {
@@ -298,11 +300,12 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
             '--output-srt', 'true',
             '--output-file', baseOutput,
             '--max-context', '48',
-            '--entropy-thold', '2.8',
-            '--no-speech-thold', '0.6',
+            '--entropy-thold', '3.0',
+            '--word-thold', '0.02',
+            '--no-speech-thold', '0.8',
             '--print-progress', 'true',
             '--split-on-word', 'true',
-            '--max-len', '80'
+            '--max-len', '60'
         ];
 
         if (disableGpu)
