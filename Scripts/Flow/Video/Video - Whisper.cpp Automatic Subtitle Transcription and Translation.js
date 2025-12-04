@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 36
+ * @revision 39
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English.
@@ -111,25 +111,25 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
     const installRoot = '/app/common/whispercpp';
     const modelDir = System.IO.Path.Combine(installRoot, 'models');
-    const legacyModelLink = System.IO.Path.Combine(modelDir, 'model.bin');
     const pickFirstExisting = (candidates) => candidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || '';
 
     const overrideLower = modelOverride.toLowerCase();
     const multilingualModel = pickFirstExisting([
         modelOverride && !overrideLower.includes('.en.') ? modelOverride : '',
+        System.IO.Path.Combine(modelDir, 'ggml-large-v3-turbo.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-medium.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-small.bin'),
-        legacyModelLink
+        System.IO.Path.Combine(modelDir, 'ggml-small.bin')
     ]);
 
     let englishModel = pickFirstExisting([
         englishOverride,
         modelOverride && overrideLower.includes('.en.') ? modelOverride : '',
+        System.IO.Path.Combine(modelDir, 'ggml-large-v3-turbo.bin'),
+        System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
+        System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-medium.en.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-large-v3.en.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-large.en.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-small.en.bin')
     ]);
 
@@ -139,8 +139,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
     const vadCandidates = [
         vadOverride,
-        System.IO.Path.Combine(modelDir, 'ggml-silero-v6.2.0.bin'),
-        System.IO.Path.Combine(modelDir, 'vad-model.bin')
+        System.IO.Path.Combine(modelDir, 'ggml-silero-v6.2.0.bin')
     ];
     const vadPath = pickFirstExisting(vadCandidates);
 
@@ -148,11 +147,11 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
     if (!System.IO.File.Exists(whisperCli))
         missing.push(`binary at '${whisperCli}'`);
     if (!multilingualModel)
-        missing.push('multilingual Whisper.cpp model (e.g., ggml-medium.bin or ggml-small.bin)');
+        missing.push('multilingual Whisper.cpp model (e.g., ggml-large-v3-turbo.bin, ggml-medium.bin or ggml-small.bin)');
 
     if (missing.length > 0) {
         Logger.ELog(`[whisper-sub] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
-        const installMsg = "Install the Whisper.cpp DockerMod for the binary and small models plus the 'Whisper.cpp - Medium Model & Solera VAD' DockerMod for medium and VAD support, or provide paths via 'whisper' and 'whisper-model' (and optionally 'whisper-en-model').";
+        const installMsg = "Install the Whisper.cpp DockerMod for the binary and small models plus the 'Whisper.cpp - Large V3 Turbo Model' DockerMod for the preferred model and 'Whisper.cpp - Medium Model & Solera VAD' DockerMod for medium and VAD support, or provide paths via 'whisper' and 'whisper-model' (and optionally 'whisper-en-model').";
         Logger.ELog(`[whisper-sub] ${installMsg}`);
         return Flow.Fail('Whisper.cpp and/or required model missing, please install and set variables');
     }
@@ -257,6 +256,17 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
         return true;
     };
 
+    const appendVadParameters = (args, enabled) => {
+        if (!enabled || !hasVad)
+            return;
+
+        args.push('--vad', 'true');
+        args.push('--vad-model', vadPath);
+        args.push('--vad-threshold', '0.9');
+        args.push('--vad-min-silence-duration-ms', '100');
+        args.push('--vad-speech-pad-ms', '50');
+    };
+
     const detectLanguage = (audioPath, useVad = true) => {
         const args = [
             '--model', multilingualModel,
@@ -268,11 +278,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
         if (disableGpu)
             args.push('--no-gpu', 'true');
 
-        if (useVad && hasVad) {
-            args.push('--vad', 'true');
-            args.push('--vad-model', vadPath);
-            args.push('--vad-threshold', '0.7');
-        }
+        appendVadParameters(args, useVad);
 
         const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
         if (process.exitCode !== 0) {
@@ -293,11 +299,12 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
             '--output-srt', 'true',
             '--output-file', baseOutput,
             '--max-context', '48',
-            '--entropy-thold', '2.8',
-            '--no-speech-thold', '0.6',
+            '--entropy-thold', '3.0',
+            '--word-thold', '0.02',
+            '--no-speech-thold', '0.8',
             '--print-progress', 'true',
             '--split-on-word', 'true',
-            '--max-len', '80'
+            '--max-len', '60'
         ];
 
         if (disableGpu)
@@ -308,11 +315,8 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
         if (translateFlag)
             args.push('--translate', 'true');
-        if (hasVad) {
-            args.push('--vad', 'true');
-            args.push('--vad-model', vadPath);
-            args.push('--vad-threshold', '0.7');
-        }
+
+        appendVadParameters(args, true);
 
         const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
         return process;
