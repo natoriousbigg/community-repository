@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 36
+ * @revision 39
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English.
@@ -116,6 +116,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
     const overrideLower = modelOverride.toLowerCase();
     const multilingualModel = pickFirstExisting([
         modelOverride && !overrideLower.includes('.en.') ? modelOverride : '',
+        System.IO.Path.Combine(modelDir, 'ggml-large-v3-turbo.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-medium.bin'),
@@ -125,9 +126,10 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
     let englishModel = pickFirstExisting([
         englishOverride,
         modelOverride && overrideLower.includes('.en.') ? modelOverride : '',
+        System.IO.Path.Combine(modelDir, 'ggml-large-v3-turbo.bin'),
+        System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
+        System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-medium.en.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-large-v3.en.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-large.en.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-small.en.bin')
     ]);
 
@@ -145,11 +147,11 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
     if (!System.IO.File.Exists(whisperCli))
         missing.push(`binary at '${whisperCli}'`);
     if (!multilingualModel)
-        missing.push('multilingual Whisper.cpp model (e.g., ggml-medium.bin or ggml-small.bin)');
+        missing.push('multilingual Whisper.cpp model (e.g., ggml-large-v3-turbo.bin, ggml-medium.bin or ggml-small.bin)');
 
     if (missing.length > 0) {
         Logger.ELog(`[whisper-sub] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
-        const installMsg = "Install the Whisper.cpp DockerMod for the binary and small models plus the 'Whisper.cpp - Medium Model & Solera VAD' DockerMod for medium and VAD support, or provide paths via 'whisper' and 'whisper-model' (and optionally 'whisper-en-model').";
+        const installMsg = "Install the Whisper.cpp DockerMod for the binary and small models plus the 'Whisper.cpp - Large V3 Turbo Model' DockerMod for the preferred model and 'Whisper.cpp - Medium Model & Solera VAD' DockerMod for medium and VAD support, or provide paths via 'whisper' and 'whisper-model' (and optionally 'whisper-en-model').";
         Logger.ELog(`[whisper-sub] ${installMsg}`);
         return Flow.Fail('Whisper.cpp and/or required model missing, please install and set variables');
     }
