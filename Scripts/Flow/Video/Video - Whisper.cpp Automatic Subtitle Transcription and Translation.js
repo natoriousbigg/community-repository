@@ -111,7 +111,6 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
     const installRoot = '/app/common/whispercpp';
     const modelDir = System.IO.Path.Combine(installRoot, 'models');
-    const legacyModelLink = System.IO.Path.Combine(modelDir, 'model.bin');
     const pickFirstExisting = (candidates) => candidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || '';
 
     const overrideLower = modelOverride.toLowerCase();
@@ -120,8 +119,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
         System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-medium.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-small.bin'),
-        legacyModelLink
+        System.IO.Path.Combine(modelDir, 'ggml-small.bin')
     ]);
 
     let englishModel = pickFirstExisting([
@@ -139,8 +137,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
     const vadCandidates = [
         vadOverride,
-        System.IO.Path.Combine(modelDir, 'ggml-silero-v6.2.0.bin'),
-        System.IO.Path.Combine(modelDir, 'vad-model.bin')
+        System.IO.Path.Combine(modelDir, 'ggml-silero-v6.2.0.bin')
     ];
     const vadPath = pickFirstExisting(vadCandidates);
 
