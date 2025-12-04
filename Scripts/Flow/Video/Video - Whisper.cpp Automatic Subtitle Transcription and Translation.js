@@ -257,6 +257,15 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
         return true;
     };
 
+    const appendVadParameters = (args, enabled) => {
+        if (!enabled || !hasVad)
+            return;
+
+        args.push('--vad', 'true');
+        args.push('--vad-model', vadPath);
+        args.push('--vad-threshold', '0.7');
+    };
+
     const detectLanguage = (audioPath, useVad = true) => {
         const args = [
             '--model', multilingualModel,
@@ -268,11 +277,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
         if (disableGpu)
             args.push('--no-gpu', 'true');
 
-        if (useVad && hasVad) {
-            args.push('--vad', 'true');
-            args.push('--vad-model', vadPath);
-            args.push('--vad-threshold', '0.7');
-        }
+        appendVadParameters(args, useVad);
 
         const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
         if (process.exitCode !== 0) {
@@ -308,11 +313,8 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
         if (translateFlag)
             args.push('--translate', 'true');
-        if (hasVad) {
-            args.push('--vad', 'true');
-            args.push('--vad-model', vadPath);
-            args.push('--vad-threshold', '0.7');
-        }
+
+        appendVadParameters(args, true);
 
         const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
         return process;
