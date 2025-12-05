@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 39
+ * @revision 41
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English.
@@ -299,10 +299,13 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
             '--language', language || 'auto',
             '--output-srt', 'true',
             '--output-file', baseOutput,
-            '--max-context', '48',
+            '--temperature', '0.0',
+            '--temperature-inc', '0.0',
+            '--max-context', '16',
             '--entropy-thold', '3.0',
             '--word-thold', '0.02',
-            '--no-speech-thold', '0.8',
+            '--no-speech-thold', '0.90',
+            '--logprob-thold', '-0.8',
             '--print-progress', 'true',
             '--split-on-word', 'true',
             '--max-len', '60'
