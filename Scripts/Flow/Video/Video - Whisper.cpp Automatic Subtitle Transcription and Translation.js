@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 41
+ * @revision 42
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English.
@@ -97,7 +97,6 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
     const whisperOverride = (Variables['whisper'] || '').toString().trim();
     const modelOverride = (Variables['whisper-model'] || '').toString().trim();
     const englishOverride = (Variables['whisper-en-model'] || '').toString().trim();
-    const vadOverride = (Variables['whisper-vad'] || '').toString().trim();
 
     const whisperCandidates = [
         whisperOverride,
@@ -121,7 +120,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
             System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
             System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
             System.IO.Path.Combine(modelDir, 'ggml-medium.bin'),
-            System.IO.Path.Combine(modelDir, 'ggml-small.bin')
+            System.IO.Path.Combine(modelDir, 'ggml-base.bin')
         ]);
 
     let englishModel = englishOverride
@@ -131,41 +130,28 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
             System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
             System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
             System.IO.Path.Combine(modelDir, 'ggml-medium.en.bin'),
-            System.IO.Path.Combine(modelDir, 'ggml-small.en.bin')
+            System.IO.Path.Combine(modelDir, 'ggml-base.en.bin')
         ]);
 
     let hasDedicatedEnglish = englishModel && System.IO.File.Exists(englishModel);
     if (!englishModel || !System.IO.File.Exists(englishModel))
         englishModel = multilingualModel;
 
-    const vadCandidates = [
-        vadOverride,
-        System.IO.Path.Combine(modelDir, 'ggml-silero-v6.2.0.bin')
-    ];
-    const vadPath = vadOverride || pickFirstExisting(vadCandidates);
-
     const missing = [];
     if (!System.IO.File.Exists(whisperCli))
         missing.push(`binary at '${whisperCli}'`);
     if (!multilingualModel)
-        missing.push('multilingual Whisper.cpp model (e.g., ggml-large-v3-turbo.bin, ggml-medium.bin or ggml-small.bin)');
+        missing.push('multilingual Whisper.cpp model (e.g., ggml-large-v3-turbo.bin, ggml-medium.bin or ggml-base.bin)');
 
     if (missing.length > 0) {
         Logger.ELog(`[whisper-sub] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
-        const installMsg = "Install the Whisper.cpp DockerMod for the binary and small models plus the 'Whisper.cpp - Large V3 Turbo Model' DockerMod for the preferred model and 'Whisper.cpp - Medium Model & Solera VAD' DockerMod for medium and VAD support, or provide paths via 'whisper' and 'whisper-model' (and optionally 'whisper-en-model').";
+        const installMsg = "Install the Whisper.cpp DockerMod for the binary and base models plus the 'Whisper.cpp - Large V3 Turbo Model' DockerMod for the preferred model, or provide paths via 'whisper' and 'whisper-model' (and optionally 'whisper-en-model').";
         Logger.ELog(`[whisper-sub] ${installMsg}`);
         return Flow.Fail('Whisper.cpp and/or required model missing, please install and set variables');
     }
 
     if (!hasDedicatedEnglish)
         Logger.WLog('[whisper-sub] English Whisper.cpp model not found; using multilingual model for English audio.');
-
-    let hasVad = false;
-    if (System.IO.File.Exists(vadPath)) {
-        hasVad = true;
-    } else {
-        Logger.WLog("[whisper-sub] VAD Model missing and highly recommended. Download from https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin and add variable 'whisper-vad'");
-    }
 
     const workingDir = Flow.TempPath || System.IO.Path.GetTempPath();
     const originalDir = System.IO.Path.GetDirectoryName(filePath);
@@ -257,18 +243,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
         return true;
     };
 
-    const appendVadParameters = (args, enabled) => {
-        if (!enabled || !hasVad)
-            return;
-
-        args.push('--vad', 'true');
-        args.push('--vad-model', vadPath);
-        args.push('--vad-threshold', '0.9');
-        args.push('--vad-min-silence-duration-ms', '100');
-        args.push('--vad-speech-pad-ms', '50');
-    };
-
-    const detectLanguage = (audioPath, useVad = true) => {
+    const detectLanguage = (audioPath) => {
         const args = [
             '--model', multilingualModel,
             '--file', audioPath,
@@ -278,8 +253,6 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
         if (disableGpu)
             args.push('--no-gpu', 'true');
-
-        appendVadParameters(args, useVad);
 
         const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
         if (process.exitCode !== 0) {
@@ -320,8 +293,6 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
         if (translateFlag)
             args.push('--translate', 'true');
 
-        appendVadParameters(args, true);
-
         const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
         return process;
     };
@@ -343,7 +314,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
         if (!extractAudioSample(i, samplePath))
             return Flow.Fail('Whisper Execution Failed');
 
-        const detectedFromSample = detectLanguage(samplePath, false);
+        const detectedFromSample = detectLanguage(samplePath);
         if (!detectedFromSample) {
             Logger.WLog(`[whisper-sub] Could not determine language for track ${i} during sample detection.`);
             return Flow.Fail('Whisper Execution Failed');
