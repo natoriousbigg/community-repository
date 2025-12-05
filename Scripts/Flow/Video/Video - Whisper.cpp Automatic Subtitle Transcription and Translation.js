@@ -277,8 +277,8 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
             '--max-context', '16',
             '--entropy-thold', '3.0',
             '--word-thold', '0.02',
-            '--no-speech-thold', '0.90',
-            '--logprob-thold', '-0.8',
+            '--no-speech-thold', '0.95',
+            '--logprob-thold', '-1.0',
             '--print-progress', 'true',
             '--split-on-word', 'true',
             '--max-len', '60'
