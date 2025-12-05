@@ -3,7 +3,7 @@
  * @uid 08cf6e37-0c77-4c08-b8d3-2794f200882c
  * @description Samples each audio track with whisper-cli to detect the spoken language and normalizes the track language tags (ISO 639-1) without running a full transcription.
  * @author OpenAI-Assistant
- * @revision 20
+ * @revision 21
  * @output Languages updated
  * @output Languages unchanged
  * @output No audio tracks found
@@ -42,7 +42,7 @@ function Script(NoGpu) {
         System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
         System.IO.Path.Combine(modelDir, 'ggml-medium.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-small.bin'),
+        System.IO.Path.Combine(modelDir, 'ggml-base.bin'),
         legacyModelLink
     ]);
 
@@ -50,11 +50,11 @@ function Script(NoGpu) {
     if (!System.IO.File.Exists(whisperCli))
         missing.push(`binary at '${whisperCli}'`);
     if (!multilingualModel)
-        missing.push('multilingual Whisper.cpp model (e.g., ggml-medium.bin or ggml-small.bin)');
+        missing.push('multilingual Whisper.cpp model (e.g., ggml-medium.bin or ggml-base.bin)');
 
     if (missing.length > 0) {
         Logger.ELog(`[whisper-cli] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
-        const installMsg = "Install the Whisper.cpp DockerMod for the binary and small models plus the 'Whisper.cpp - Medium Model & Solera VAD' DockerMod for medium and VAD support, or provide paths via 'whisper' and 'whisper-model' (and optionally 'whisper-en-model').";
+        const installMsg = "Install the Whisper.cpp DockerMod for the binary and base models or provide paths via 'whisper' and 'whisper-model' (and optionally 'whisper-en-model').";
         Logger.ELog(`[whisper-cli] ${installMsg}`);
         return Flow.Fail('Whisper.cpp and/or required model missing, please install and set variables');
     }

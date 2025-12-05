@@ -1,9 +1,9 @@
 # ----------------------------------------------------------------------------------------------------
 # Name: Whisper.cpp
-# Description: Installs the whisper.cpp binary with Vulkan support and downloads the ggml-small
+# Description: Installs the whisper.cpp binary with Vulkan support and downloads the ggml-base
 #              multilingual and English models into /app/common/whispercpp/models.
 # Author: OpenAI-Assistant
-# Revision: 16
+# Revision: 17
 # Icon: https://meta-l.cdn.bubble.io/cdn-cgi/image/w=64,h=64,f=auto,dpr=2,fit=contain/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -17,18 +17,18 @@ log() {
 INSTALL_ROOT="/app/common/whispercpp"
 BIN_DIR="${INSTALL_ROOT}/bin"
 MODEL_DIR="${INSTALL_ROOT}/models"
-SMALL_MULTILINGUAL="${MODEL_DIR}/ggml-small.bin"
-SMALL_ENGLISH="${MODEL_DIR}/ggml-small.en.bin"
+BASE_MULTILINGUAL="${MODEL_DIR}/ggml-base.bin"
+BASE_ENGLISH="${MODEL_DIR}/ggml-base.en.bin"
 BIN_LINK="/usr/local/bin/whisper-cli"
 VERSION="1.8.2"
-MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin"
-MODEL_EN_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin"
+MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
+MODEL_EN_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
 
 if [ "${1:-}" = "--uninstall" ]; then
     log "Uninstall flag detected. Removing whisper.cpp binaries and models..."
     rm -f "${BIN_LINK}" || true
     rm -rf "${INSTALL_ROOT}"
-    rm -f "${SMALL_MULTILINGUAL}" "${SMALL_ENGLISH}" || true
+    rm -f "${BASE_MULTILINGUAL}" "${BASE_ENGLISH}" || true
     rmdir --ignore-fail-on-non-empty "${MODEL_DIR}" 2>/dev/null || true
     log "Uninstall complete."
     exit 0
@@ -62,7 +62,7 @@ else
     build_dir="/tmp/whisper.cpp"
     rm -rf "${build_dir}"
     if git clone --branch "v${VERSION}" --depth 1 https://github.com/ggerganov/whisper.cpp "${build_dir}"; then
-        if cmake -S "${build_dir}" -B "${build_dir}/build" -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=1; then
+        if cmake -S "${build_dir}" -B "${build_dir}/build" -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=1 -DBUILD_SHARED_LIBS=0; then
             if cmake --build "${build_dir}/build" -- -j"$(nproc)"; then
                 if [ -x "${build_dir}/build/bin/whisper-cli" ]; then
                     binary_path="${build_dir}/build/bin/whisper-cli"
@@ -93,18 +93,18 @@ fi
 log "Linking binary at ${BIN_LINK}."
 ln -sf "${binary_path}" "${BIN_LINK}"
 
-if [ -f "${SMALL_MULTILINGUAL}" ]; then
-    log "Multilingual model already present at ${SMALL_MULTILINGUAL}; skipping download."
+if [ -f "${BASE_MULTILINGUAL}" ]; then
+    log "Multilingual model already present at ${BASE_MULTILINGUAL}; skipping download."
 else
-    log "Downloading multilingual small model to ${SMALL_MULTILINGUAL}."
-    curl -L --fail "${MODEL_URL}" -o "${SMALL_MULTILINGUAL}"
+    log "Downloading multilingual base model to ${BASE_MULTILINGUAL}."
+    curl -L --fail "${MODEL_URL}" -o "${BASE_MULTILINGUAL}"
 fi
 
-if [ -f "${SMALL_ENGLISH}" ]; then
-    log "English model already present at ${SMALL_ENGLISH}; skipping download."
+if [ -f "${BASE_ENGLISH}" ]; then
+    log "English model already present at ${BASE_ENGLISH}; skipping download."
 else
-    log "Downloading English small model to ${SMALL_ENGLISH}."
-    curl -L --fail "${MODEL_EN_URL}" -o "${SMALL_ENGLISH}"
+    log "Downloading English base model to ${BASE_ENGLISH}."
+    curl -L --fail "${MODEL_EN_URL}" -o "${BASE_ENGLISH}"
 fi
 
 log "whisper.cpp installation complete. Models installed under ${MODEL_DIR}."
