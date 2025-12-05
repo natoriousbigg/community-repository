@@ -62,7 +62,7 @@ else
     build_dir="/tmp/whisper.cpp"
     rm -rf "${build_dir}"
     if git clone --branch "v${VERSION}" --depth 1 https://github.com/ggerganov/whisper.cpp "${build_dir}"; then
-        if cmake -S "${build_dir}" -B "${build_dir}/build" -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=1 -DBUILD_SHARED_LIBS=0; then
+        if cmake -S "${build_dir}" -B "${build_dir}/build" -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=1 -DBUILD_SHARED_LIBS=0 -DGGML_STATIC=ON; then
             if cmake --build "${build_dir}/build" -- -j"$(nproc)"; then
                 if [ -x "${build_dir}/build/bin/whisper-cli" ]; then
                     binary_path="${build_dir}/build/bin/whisper-cli"
