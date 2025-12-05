@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 39
+ * @revision 40
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English.
@@ -101,39 +101,40 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
     const whisperCandidates = [
         whisperOverride,
-        '/usr/local/bin/whisper-cli',
         Flow.GetToolPath('whisper-cli'),
         Flow.GetToolPath('whisper'),
+        '/usr/local/bin/whisper-cli',
         '/app/common/whispercpp/bin/whisper-cli'
     ];
 
-    const whisperCli = whisperCandidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || whisperCandidates[whisperCandidates.length - 1];
+    const whisperCli = whisperOverride || whisperCandidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || whisperCandidates[whisperCandidates.length - 1];
 
     const installRoot = '/app/common/whispercpp';
     const modelDir = System.IO.Path.Combine(installRoot, 'models');
     const pickFirstExisting = (candidates) => candidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || '';
 
     const overrideLower = modelOverride.toLowerCase();
-    const multilingualModel = pickFirstExisting([
-        modelOverride && !overrideLower.includes('.en.') ? modelOverride : '',
-        System.IO.Path.Combine(modelDir, 'ggml-large-v3-turbo.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-medium.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-small.bin')
-    ]);
+    const multilingualModel = modelOverride && !overrideLower.includes('.en.')
+        ? modelOverride
+        : pickFirstExisting([
+            System.IO.Path.Combine(modelDir, 'ggml-large-v3-turbo.bin'),
+            System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
+            System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
+            System.IO.Path.Combine(modelDir, 'ggml-medium.bin'),
+            System.IO.Path.Combine(modelDir, 'ggml-small.bin')
+        ]);
 
-    let englishModel = pickFirstExisting([
-        englishOverride,
-        modelOverride && overrideLower.includes('.en.') ? modelOverride : '',
-        System.IO.Path.Combine(modelDir, 'ggml-large-v3-turbo.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-medium.en.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-small.en.bin')
-    ]);
+    let englishModel = englishOverride
+        || (modelOverride && overrideLower.includes('.en.') ? modelOverride : '')
+        || pickFirstExisting([
+            System.IO.Path.Combine(modelDir, 'ggml-large-v3-turbo.bin'),
+            System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
+            System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
+            System.IO.Path.Combine(modelDir, 'ggml-medium.en.bin'),
+            System.IO.Path.Combine(modelDir, 'ggml-small.en.bin')
+        ]);
 
-    const hasDedicatedEnglish = !!englishModel;
+    let hasDedicatedEnglish = englishModel && System.IO.File.Exists(englishModel);
     if (!englishModel || !System.IO.File.Exists(englishModel))
         englishModel = multilingualModel;
 
@@ -141,7 +142,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
         vadOverride,
         System.IO.Path.Combine(modelDir, 'ggml-silero-v6.2.0.bin')
     ];
-    const vadPath = pickFirstExisting(vadCandidates);
+    const vadPath = vadOverride || pickFirstExisting(vadCandidates);
 
     const missing = [];
     if (!System.IO.File.Exists(whisperCli))
@@ -298,10 +299,15 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
             '--language', language || 'auto',
             '--output-srt', 'true',
             '--output-file', baseOutput,
-            '--max-context', '48',
+            '--temperature', '0.0',
+            '--temperature-inc', '0.0',
+            '--max-context', '16',
             '--entropy-thold', '3.0',
             '--word-thold', '0.02',
-            '--no-speech-thold', '0.8',
+            '--no-speech-thold', '0.90',
+            '--logprob-thold', '-0.8',
+            '--suppress-non-speech-tokens', 'true',
+            '--suppress-blank', 'true',
             '--print-progress', 'true',
             '--split-on-word', 'true',
             '--max-len', '60'
