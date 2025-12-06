@@ -2,8 +2,8 @@
 # Name: Whisper.cpp
 # Description: Installs the whisper.cpp binary with Vulkan support and downloads the ggml-base
 #              multilingual and English models into /app/common/whispercpp/models.
-# Author: OpenAI-Assistant
-# Revision: 17
+# Author: Gas-X-ExtraStrength
+# Revision: 1
 # Icon: https://meta-l.cdn.bubble.io/cdn-cgi/image/w=64,h=64,f=auto,dpr=2,fit=contain/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -20,7 +20,8 @@ MODEL_DIR="${INSTALL_ROOT}/models"
 BASE_MULTILINGUAL="${MODEL_DIR}/ggml-base.bin"
 BASE_ENGLISH="${MODEL_DIR}/ggml-base.en.bin"
 BIN_LINK="/usr/local/bin/whisper-cli"
-VERSION="1.8.2"
+VERSION="1.8.2.01"
+BINARY_URL="https://github.com/natoriousbigg/whisper.cpp/releases/download/v${VERSION}/whisper-cli-v${VERSION}-ubuntu-x64.zip"
 MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
 MODEL_EN_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
 
@@ -39,55 +40,52 @@ mkdir -p "${BIN_DIR}" "${MODEL_DIR}"
 
 binary_path=""
 
+packages=()
+
 if ! command -v curl >/dev/null 2>&1; then
     log "curl not found. Installing curl and CA certificates."
+    packages+=(curl ca-certificates)
+fi
+
+if ! command -v unzip >/dev/null 2>&1; then
+    log "unzip not found. Installing unzip."
+    packages+=(unzip)
+fi
+
+if ! command -v vulkaninfo >/dev/null 2>&1; then
+    log "vulkan-tools not found. Installing vulkan-tools for Vulkan diagnostics."
+    packages+=(vulkan-tools)
+fi
+
+if [ ${#packages[@]} -gt 0 ]; then
     apt-get -qq update
-    apt-get install -yqq curl ca-certificates
+    apt-get install -yqq "${packages[@]}"
 fi
 
 if [ -x "${BIN_DIR}/whisper-cli" ]; then
-    log "Existing whisper.cpp binary found at ${BIN_DIR}/whisper-cli; skipping rebuild."
+    log "Existing whisper.cpp binary found at ${BIN_DIR}/whisper-cli; skipping download."
     binary_path="${BIN_DIR}/whisper-cli"
 else
-    log "Installing required system packages (curl, ca-certificates, git, build-essential, pkg-config, cmake, Vulkan headers/libs, glslc)."
-    apt-get -qq update
-    apt-get install -yqq curl ca-certificates git build-essential pkg-config cmake libvulkan-dev vulkan-tools glslc
+    log "Downloading prebuilt whisper.cpp v${VERSION} binary."
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "${tmp_dir}"' EXIT
+    zip_path="${tmp_dir}/whisper-cli.zip"
 
-    if ! command -v glslc >/dev/null 2>&1; then
-        log "Required Vulkan shader compiler 'glslc' not found after package installation. Ensure the glslc package is available in your image repositories or install it manually before rerunning."
-        exit 1
-    fi
-
-    log "Building whisper.cpp v${VERSION} from source (no prebuilt binaries available)."
-    build_dir="/tmp/whisper.cpp"
-    rm -rf "${build_dir}"
-    if git clone --branch "v${VERSION}" --depth 1 https://github.com/ggerganov/whisper.cpp "${build_dir}"; then
-        if cmake -S "${build_dir}" -B "${build_dir}/build" -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=1 -DBUILD_SHARED_LIBS=0 -DGGML_STATIC=ON; then
-            if cmake --build "${build_dir}/build" -- -j"$(nproc)"; then
-                if [ -x "${build_dir}/build/bin/whisper-cli" ]; then
-                    binary_path="${build_dir}/build/bin/whisper-cli"
-                elif [ -x "${build_dir}/whisper-cli" ]; then
-                    binary_path="${build_dir}/whisper-cli"
-                else
-                    log "Source build completed but 'whisper-cli' binary not found in expected locations."
-                    exit 1
-                fi
-            else
-                log "Building whisper.cpp from source failed."
-                exit 1
-            fi
-        else
-            log "Configuring whisper.cpp with CMake failed."
+    if curl -L --fail "${BINARY_URL}" -o "${zip_path}"; then
+        unzip -q "${zip_path}" -d "${tmp_dir}"
+        binary_candidate="$(find "${tmp_dir}" -type f -name whisper-cli -perm -u+x | head -n 1 || true)"
+        if [ -z "${binary_candidate}" ]; then
+            log "Failed to locate whisper-cli binary in downloaded archive."
             exit 1
         fi
+
+        log "Installing binary to ${BIN_DIR}/whisper-cli."
+        install -m 0755 "${binary_candidate}" "${BIN_DIR}/whisper-cli"
+        binary_path="${BIN_DIR}/whisper-cli"
     else
-        log "Cloning whisper.cpp repository failed."
+        log "Downloading whisper.cpp binary failed."
         exit 1
     fi
-
-    log "Installing binary to ${BIN_DIR}/whisper-cli."
-    install -m 0755 "${binary_path}" "${BIN_DIR}/whisper-cli"
-    binary_path="${BIN_DIR}/whisper-cli"
 fi
 
 log "Linking binary at ${BIN_LINK}."
