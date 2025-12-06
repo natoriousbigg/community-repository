@@ -3,7 +3,7 @@
 # Description: Installs the whisper.cpp binary with Vulkan support and downloads the ggml-base
 #              multilingual and English models into /app/common/whispercpp/models.
 # Author: OpenAI-Assistant
-# Revision: 17
+# Revision: 18
 # Icon: https://meta-l.cdn.bubble.io/cdn-cgi/image/w=64,h=64,f=auto,dpr=2,fit=contain/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -40,16 +40,26 @@ mkdir -p "${BIN_DIR}" "${MODEL_DIR}"
 
 binary_path=""
 
+packages=()
+
 if ! command -v curl >/dev/null 2>&1; then
     log "curl not found. Installing curl and CA certificates."
-    apt-get -qq update
-    apt-get install -yqq curl ca-certificates
+    packages+=(curl ca-certificates)
 fi
 
 if ! command -v unzip >/dev/null 2>&1; then
     log "unzip not found. Installing unzip."
+    packages+=(unzip)
+fi
+
+if ! command -v vulkaninfo >/dev/null 2>&1; then
+    log "vulkan-tools not found. Installing vulkan-tools for Vulkan diagnostics."
+    packages+=(vulkan-tools)
+fi
+
+if [ ${#packages[@]} -gt 0 ]; then
     apt-get -qq update
-    apt-get install -yqq unzip
+    apt-get install -yqq "${packages[@]}"
 fi
 
 if [ -x "${BIN_DIR}/whisper-cli" ]; then
