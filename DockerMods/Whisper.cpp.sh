@@ -2,8 +2,8 @@
 # Name: Whisper.cpp
 # Description: Installs the whisper.cpp binary with Vulkan support and downloads the ggml-base
 #              multilingual and English models into /app/common/whispercpp/models.
-# Author: OpenAI-Assistant
-# Revision: 18
+# Author: Gas-X-ExtraStrengt
+# Revision: 1
 # Icon: https://meta-l.cdn.bubble.io/cdn-cgi/image/w=64,h=64,f=auto,dpr=2,fit=contain/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
