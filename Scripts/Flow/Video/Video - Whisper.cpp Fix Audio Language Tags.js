@@ -3,7 +3,7 @@
  * @uid 08cf6e37-0c77-4c08-b8d3-2794f200882c
  * @description Samples each audio track with whisper-cli to detect the spoken language and normalizes the track language tags (ISO 639-1) without running a full transcription.
  * @author OpenAI-Assistant
- * @revision 21
+ * @revision 22
  * @output Languages updated
  * @output Languages unchanged
  * @output No audio tracks found
@@ -37,14 +37,55 @@ function Script(NoGpu) {
     const modelDir = System.IO.Path.Combine(installRoot, 'models');
     const legacyModelLink = System.IO.Path.Combine(modelDir, 'model.bin');
     const pickFirstExisting = (candidates) => candidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || '';
-    const multilingualModel = pickFirstExisting([
-        variableModel && !variableModel.toLowerCase().includes('.en.') ? variableModel : '',
-        System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-medium.bin'),
-        System.IO.Path.Combine(modelDir, 'ggml-base.bin'),
-        legacyModelLink
-    ]);
+    const pickFromDirectories = (directories, fileNames) => {
+        for (const dir of directories) {
+            const found = pickFirstExisting(fileNames.map((name) => System.IO.Path.Combine(dir, name)));
+            if (found)
+                return found;
+        }
+        return '';
+    };
+
+    const overrideIsDirectory = variableModel && System.IO.Directory.Exists(variableModel);
+    const modelSearchDirs = [];
+    if (overrideIsDirectory)
+        modelSearchDirs.push(variableModel);
+    modelSearchDirs.push(modelDir);
+
+    const multilingualCandidates = [
+        'ggml-large-v3-turbo.bin',
+        'ggml-large-v3.bin',
+        'ggml-large.bin',
+        'ggml-medium.bin',
+        'ggml-base.bin',
+        legacyModelLink ? System.IO.Path.GetFileName(legacyModelLink) : ''
+    ].filter(Boolean);
+
+    const englishCandidates = [
+        'ggml-large-v3-turbo.bin',
+        'ggml-large-v3.bin',
+        'ggml-large.bin',
+        'ggml-medium.en.bin',
+        'ggml-base.en.bin',
+        'ggml-base.bin'
+    ];
+
+    const resolveModel = (explicitPath, fallbackDirs, candidates) => {
+        if (explicitPath) {
+            if (System.IO.Directory.Exists(explicitPath)) {
+                const found = pickFromDirectories([explicitPath], candidates);
+                if (found)
+                    return found;
+            } else if (System.IO.File.Exists(explicitPath)) {
+                return explicitPath;
+            }
+        }
+        return pickFromDirectories(fallbackDirs, candidates);
+    };
+
+    let multilingualModel = resolveModel(variableModel && !variableModel.toLowerCase().includes('.en.') ? variableModel : '', modelSearchDirs, multilingualCandidates);
+    if (!multilingualModel)
+        multilingualModel = resolveModel(variableModel, modelSearchDirs, englishCandidates);
 
     const missing = [];
     if (!System.IO.File.Exists(whisperCli))
