@@ -3,18 +3,18 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 43
+ * @revision 46
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English.
  * @param {bool} SkipOriginalLanguage Skip creating the original-language subtitle when a translation is produced.
- * @param {bool} SkipExistingSubtitles Skip generation if a subtitle for the language already exists (embedded or sidecar).
+ * @param {bool} OverWriteExistingSubtitles Overwrite existing subtitles instead of skipping generation when present.
  * @param {bool} DebugMode Disable quiet whisper-cli output (removes --no-prints).
  * @param {bool} NoGpu Disable GPU acceleration.
  * @param {bool} FixAudioLanguages Update audio track language tags using detected languages before transcription.
  * @param {('OrgDir'|'WorkingDir')} SubtitleSaveDir Directory to save subtitles to. OrgDir - Original Directory. WorkingDir - Fileflows working directory.
  */
-function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles = true, DebugMode, NoGpu, FixAudioLanguages, SubtitleSaveDir) {
+function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubtitles = false, DebugMode, NoGpu, FixAudioLanguages, SubtitleSaveDir) {
     const vi = Variables.vi?.VideoInfo;
     const filePath = Variables.file?.FullName;
 
@@ -44,7 +44,8 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
     const translateToEnglish = parseBoolean(typeof Variables['TranslateToEnglish'] !== 'undefined' ? Variables['TranslateToEnglish'] : TranslateToEnglish, false);
     const skipOriginal = parseBoolean(typeof Variables['SkipOriginalLanguage'] !== 'undefined' ? Variables['SkipOriginalLanguage'] : SkipOriginalLanguage, false);
     const keepOriginal = !skipOriginal;
-    const skipExistingSubtitles = parseBoolean(typeof Variables['SkipExistingSubtitles'] !== 'undefined' ? Variables['SkipExistingSubtitles'] : SkipExistingSubtitles, true);
+    const overwriteExistingSubtitles = parseBoolean(typeof Variables['OverWriteExistingSubtitles'] !== 'undefined' ? Variables['OverWriteExistingSubtitles'] : OverWriteExistingSubtitles, false);
+    const skipExistingSubtitles = !overwriteExistingSubtitles;
     const debugMode = parseBoolean(typeof Variables['DebugMode'] !== 'undefined' ? Variables['DebugMode'] : DebugMode, false);
     const disableGpu = parseBoolean(typeof Variables['NoGpu'] !== 'undefined' ? Variables['NoGpu'] : NoGpu, false);
     const fixAudioLanguages = parseBoolean(typeof Variables['FixAudioLanguages'] !== 'undefined' ? Variables['FixAudioLanguages'] : FixAudioLanguages, false);
@@ -96,7 +97,6 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
     const whisperOverride = (Variables['whisper'] || '').toString().trim();
     const modelOverride = (Variables['whisper-model'] || '').toString().trim();
-    const englishOverride = (Variables['whisper-en-model'] || '').toString().trim();
 
     const whisperCandidates = [
         whisperOverride,
@@ -110,12 +110,23 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
     const installRoot = '/app/common/whispercpp';
     const modelDir = System.IO.Path.Combine(installRoot, 'models');
-    const pickFirstExisting = (candidates) => candidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || '';
-    const pickFromDirectories = (directories, fileNames) => {
+    const pickPreferredModel = (directories, candidates) => {
+        const candidatesLower = candidates.map((c) => c.toLowerCase());
         for (const dir of directories) {
-            const found = pickFirstExisting(fileNames.map((name) => System.IO.Path.Combine(dir, name)));
-            if (found)
-                return found;
+            if (!dir || !System.IO.Directory.Exists(dir))
+                continue;
+            const binFiles = System.IO.Directory.GetFiles(dir, '*.bin');
+            if (!binFiles || binFiles.length === 0)
+                continue;
+            const binLookup = binFiles.reduce((acc, file) => {
+                acc[System.IO.Path.GetFileName(file).toLowerCase()] = file;
+                return acc;
+            }, {});
+            for (const candidate of candidatesLower) {
+                if (binLookup[candidate])
+                    return binLookup[candidate];
+            }
+            return binFiles.sort()[0];
         }
         return '';
     };
@@ -145,26 +156,21 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
     const resolveModel = (explicitPath, fallbackDirs, candidates) => {
         if (explicitPath) {
             if (System.IO.Directory.Exists(explicitPath)) {
-                const found = pickFromDirectories([explicitPath], candidates);
+                const found = pickPreferredModel([explicitPath], candidates);
                 if (found)
                     return found;
             } else if (System.IO.File.Exists(explicitPath)) {
                 return explicitPath;
             }
         }
-        return pickFromDirectories(fallbackDirs, candidates);
+        return pickPreferredModel(fallbackDirs, candidates);
     };
 
     const multilingualModel = overrideLower && !overrideIsDirectory && !overrideLower.includes('.en.')
         ? modelOverride
         : resolveModel('', modelSearchDirs, multilingualCandidates);
 
-    const englishSearchDirs = [];
-    if (englishOverride && System.IO.Directory.Exists(englishOverride))
-        englishSearchDirs.push(englishOverride);
-    englishSearchDirs.push(...modelSearchDirs);
-
-    let englishModel = resolveModel(englishOverride || (overrideLower.includes('.en.') ? modelOverride : ''), englishSearchDirs, englishCandidates);
+    let englishModel = resolveModel(overrideLower.includes('.en.') ? modelOverride : '', modelSearchDirs, englishCandidates);
 
     let hasDedicatedEnglish = englishModel && System.IO.File.Exists(englishModel);
     if (!englishModel || !System.IO.File.Exists(englishModel))
@@ -178,7 +184,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
 
     if (missing.length > 0) {
         Logger.ELog(`[whisper-sub] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
-        const installMsg = "Install the Whisper.cpp DockerMod for the binary and base models plus the 'Whisper.cpp - Large V3 Turbo Model' DockerMod for the preferred model, or provide paths via 'whisper' and 'whisper-model' (and optionally 'whisper-en-model').";
+        const installMsg = "Install the Whisper.cpp DockerMod for the binary and base models plus the 'Whisper.cpp - Large V3 Turbo Model' DockerMod for the preferred model, or provide paths via 'whisper' and 'whisper-model'.";
         Logger.ELog(`[whisper-sub] ${installMsg}`);
         return Flow.Fail('Whisper.cpp and/or required model missing, please install and set variables');
     }
