@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 42
+ * @revision 43
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English.
@@ -111,27 +111,60 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, SkipExistingSubtitles 
     const installRoot = '/app/common/whispercpp';
     const modelDir = System.IO.Path.Combine(installRoot, 'models');
     const pickFirstExisting = (candidates) => candidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || '';
+    const pickFromDirectories = (directories, fileNames) => {
+        for (const dir of directories) {
+            const found = pickFirstExisting(fileNames.map((name) => System.IO.Path.Combine(dir, name)));
+            if (found)
+                return found;
+        }
+        return '';
+    };
 
     const overrideLower = modelOverride.toLowerCase();
-    const multilingualModel = modelOverride && !overrideLower.includes('.en.')
-        ? modelOverride
-        : pickFirstExisting([
-            System.IO.Path.Combine(modelDir, 'ggml-large-v3-turbo.bin'),
-            System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
-            System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
-            System.IO.Path.Combine(modelDir, 'ggml-medium.bin'),
-            System.IO.Path.Combine(modelDir, 'ggml-base.bin')
-        ]);
+    const overrideIsDirectory = modelOverride && System.IO.Directory.Exists(modelOverride);
+    const modelSearchDirs = [];
+    if (overrideIsDirectory)
+        modelSearchDirs.push(modelOverride);
+    modelSearchDirs.push(modelDir);
 
-    let englishModel = englishOverride
-        || (modelOverride && overrideLower.includes('.en.') ? modelOverride : '')
-        || pickFirstExisting([
-            System.IO.Path.Combine(modelDir, 'ggml-large-v3-turbo.bin'),
-            System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'),
-            System.IO.Path.Combine(modelDir, 'ggml-large.bin'),
-            System.IO.Path.Combine(modelDir, 'ggml-medium.en.bin'),
-            System.IO.Path.Combine(modelDir, 'ggml-base.en.bin')
-        ]);
+    const multilingualCandidates = [
+        'ggml-large-v3-turbo.bin',
+        'ggml-large-v3.bin',
+        'ggml-large.bin',
+        'ggml-medium.bin',
+        'ggml-base.bin'
+    ];
+    const englishCandidates = [
+        'ggml-large-v3-turbo.bin',
+        'ggml-large-v3.bin',
+        'ggml-large.bin',
+        'ggml-medium.en.bin',
+        'ggml-base.en.bin'
+    ];
+
+    const resolveModel = (explicitPath, fallbackDirs, candidates) => {
+        if (explicitPath) {
+            if (System.IO.Directory.Exists(explicitPath)) {
+                const found = pickFromDirectories([explicitPath], candidates);
+                if (found)
+                    return found;
+            } else if (System.IO.File.Exists(explicitPath)) {
+                return explicitPath;
+            }
+        }
+        return pickFromDirectories(fallbackDirs, candidates);
+    };
+
+    const multilingualModel = overrideLower && !overrideIsDirectory && !overrideLower.includes('.en.')
+        ? modelOverride
+        : resolveModel('', modelSearchDirs, multilingualCandidates);
+
+    const englishSearchDirs = [];
+    if (englishOverride && System.IO.Directory.Exists(englishOverride))
+        englishSearchDirs.push(englishOverride);
+    englishSearchDirs.push(...modelSearchDirs);
+
+    let englishModel = resolveModel(englishOverride || (overrideLower.includes('.en.') ? modelOverride : ''), englishSearchDirs, englishCandidates);
 
     let hasDedicatedEnglish = englishModel && System.IO.File.Exists(englishModel);
     if (!englishModel || !System.IO.File.Exists(englishModel))
