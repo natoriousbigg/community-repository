@@ -79,18 +79,21 @@ else
         rm -f "${zip_path}"
         
         # Recursively extract any nested zip files and flatten structure
-        while IFS= read -r nested_zip; do
-            if [ -n "${nested_zip}" ]; then
-                log "Found nested zip: ${nested_zip}"
-                nested_extract="${extract_dir}/nested_tmp"
-                mkdir -p "${nested_extract}"
-                unzip -q "${nested_zip}" -d "${nested_extract}"
-                rm -f "${nested_zip}"
-                # Move contents up
-                find "${nested_extract}" -mindepth 1 -exec mv {} "${extract_dir}/" \; 2>/dev/null || true
-                rmdir "${nested_extract}" 2>/dev/null || true
+        # Loop until no more zip files are found (handles deeply nested zips)
+        while true; do
+            nested_zip="$(find "${extract_dir}" -type f -name "*.zip" | head -n 1)"
+            if [ -z "${nested_zip}" ]; then
+                break
             fi
-        done < <(find "${extract_dir}" -type f -name "*.zip")
+            log "Found nested zip: $(basename "${nested_zip}")"
+            nested_extract="${extract_dir}/nested_tmp"
+            mkdir -p "${nested_extract}"
+            unzip -q "${nested_zip}" -d "${nested_extract}"
+            rm -f "${nested_zip}"
+            # Move contents up
+            find "${nested_extract}" -mindepth 1 -exec mv {} "${extract_dir}/" \; 2>/dev/null || true
+            rmdir "${nested_extract}" 2>/dev/null || true
+        done
         
         log "Installing all content to ${BIN_DIR}..."
         # Copy all files from extracted directory to BIN_DIR, maintaining executability
