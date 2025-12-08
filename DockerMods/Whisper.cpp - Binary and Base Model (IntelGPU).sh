@@ -63,8 +63,12 @@ fi
 log "Installing Intel OneAPI common variables package."
 apt-get install -yqq intel-oneapi-common-vars
 
-log "Sourcing Intel OneAPI environment variables."
-source /opt/intel/oneapi/setvars.sh --force
+if [ -f /opt/intel/oneapi/setvars.sh ]; then
+    log "Sourcing Intel OneAPI environment variables."
+    source /opt/intel/oneapi/setvars.sh --force
+else
+    log "Warning: Intel OneAPI setvars.sh not found at /opt/intel/oneapi/setvars.sh"
+fi
 
 log "Downloading prebuilt whisper.cpp v${VERSION} binary."
 # Clean existing binaries to ensure fresh installation
