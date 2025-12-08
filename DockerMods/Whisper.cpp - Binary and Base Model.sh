@@ -38,8 +38,6 @@ fi
 log "Preparing directories under ${INSTALL_ROOT} and ${MODEL_DIR}."
 mkdir -p "${BIN_DIR}" "${MODEL_DIR}"
 
-binary_path=""
-
 packages=()
 
 if ! command -v curl >/dev/null 2>&1; then
@@ -102,16 +100,14 @@ if curl -L --fail "${BINARY_URL}" -o "${zip_path}"; then
     
     log "Installing all content to ${BIN_DIR}..."
     # Copy all files from extracted directory to BIN_DIR, maintaining executability
-    while IFS= read -r file; do
-        if [ -n "$file" ]; then
-            dest="${BIN_DIR}/$(basename "$file")"
-            if [ -x "$file" ]; then
-                install -m 0755 "$file" "$dest"
-            else
-                install -m 0644 "$file" "$dest"
-            fi
+    while IFS= read -r -d '' file; do
+        dest="${BIN_DIR}/$(basename "$file")"
+        if [ -x "$file" ]; then
+            install -m 0755 "$file" "$dest"
+        else
+            install -m 0644 "$file" "$dest"
         fi
-    done < <(find "${extract_dir}" -type f)
+    done < <(find "${extract_dir}" -type f -print0)
     
     # Verify whisper-cli binary was installed
     if [ ! -x "${BIN_DIR}/whisper-cli" ]; then
