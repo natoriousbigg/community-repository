@@ -1,5 +1,5 @@
 # ----------------------------------------------------------------------------------------------------
-# Name: Whisper.cpp
+# Name: Whisper.cpp - Binary and Base Model
 # Description: Installs the whisper.cpp binary with Vulkan support and downloads the ggml-base
 #              multilingual and English models into /app/common/whispercpp/models.
 # Author: Gas-X-ExtraStrength
@@ -72,15 +72,45 @@ else
     zip_path="${tmp_dir}/whisper-cli.zip"
 
     if curl -L --fail "${BINARY_URL}" -o "${zip_path}"; then
-        unzip -q "${zip_path}" -d "${tmp_dir}"
-        binary_candidate="$(find "${tmp_dir}" -type f -name whisper-cli -perm -u+x | head -n 1 || true)"
-        if [ -z "${binary_candidate}" ]; then
+        log "Extracting archive and flattening nested zips..."
+        extract_dir="${tmp_dir}/extracted"
+        mkdir -p "${extract_dir}"
+        unzip -q "${zip_path}" -d "${extract_dir}"
+        rm -f "${zip_path}"
+        
+        # Recursively extract any nested zip files and flatten structure
+        while IFS= read -r nested_zip; do
+            if [ -n "${nested_zip}" ]; then
+                log "Found nested zip: ${nested_zip}"
+                nested_extract="${extract_dir}/nested_tmp"
+                mkdir -p "${nested_extract}"
+                unzip -q "${nested_zip}" -d "${nested_extract}"
+                rm -f "${nested_zip}"
+                # Move contents up
+                find "${nested_extract}" -mindepth 1 -exec mv {} "${extract_dir}/" \; 2>/dev/null || true
+                rmdir "${nested_extract}" 2>/dev/null || true
+            fi
+        done < <(find "${extract_dir}" -type f -name "*.zip")
+        
+        log "Installing all content to ${BIN_DIR}..."
+        # Copy all files from extracted directory to BIN_DIR, maintaining executability
+        while IFS= read -r file; do
+            if [ -n "$file" ]; then
+                dest="${BIN_DIR}/$(basename "$file")"
+                if [ -x "$file" ]; then
+                    install -m 0755 "$file" "$dest"
+                else
+                    install -m 0644 "$file" "$dest"
+                fi
+            fi
+        done < <(find "${extract_dir}" -type f)
+        
+        # Verify whisper-cli binary was installed
+        if [ ! -x "${BIN_DIR}/whisper-cli" ]; then
             log "Failed to locate whisper-cli binary in downloaded archive."
             exit 1
         fi
-
-        log "Installing binary to ${BIN_DIR}/whisper-cli."
-        install -m 0755 "${binary_candidate}" "${BIN_DIR}/whisper-cli"
+        
         binary_path="${BIN_DIR}/whisper-cli"
     else
         log "Downloading whisper.cpp binary failed."
