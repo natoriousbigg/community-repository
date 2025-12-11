@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
  * @author OpenAI-Assistant
- * @revision 46
+ * @revision 47
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English.
@@ -201,6 +201,10 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         englishModel = overrideIsFile ? modelOverride : multilingualModel;
     }
 
+    // Use ggml-base.bin for faster language detection
+    const baseCandidates = ['ggml-base.bin'];
+    const baseModel = resolveModel('', modelSearchDirs, baseCandidates) || multilingualModel;
+
     const missing = [];
     if (!System.IO.File.Exists(whisperCli))
         missing.push(`binary at '${whisperCli}'`);
@@ -285,8 +289,8 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
     let created = false;
 
     const durationSeconds = vi?.Duration?.TotalSeconds || vi?.VideoStreams?.[0]?.Duration?.TotalSeconds || 0;
-    const sampleStart = durationSeconds >= 600 ? 600 : 0;
-    const sampleLength = Math.min(600, Math.max(1, (durationSeconds || 0) - sampleStart || durationSeconds || 600));
+    const sampleStart = durationSeconds >= 300 ? 300 : 0;
+    const sampleLength = Math.min(300, Math.max(1, (durationSeconds || 0) - sampleStart || durationSeconds || 300));
 
     const extractAudioSample = (trackIndex, outputPath) => {
         if (System.IO.File.Exists(outputPath))
@@ -332,7 +336,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
     const detectLanguage = (audioPath) => {
         const args = [
-            '--model', multilingualModel,
+            '--model', baseModel,
             '--file', audioPath,
             '--detect-language', 'true',
             '--language', 'auto'
@@ -368,7 +372,8 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             '--logprob-thold', '-0.5',
             '--print-progress', 'true',
             '--split-on-word', 'true',
-            '--max-len', '60'
+            '--max-len', '47',
+            '--suppress-nst', 'true'
         ];
 
         if (vadModelPath) {
@@ -377,8 +382,9 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 '--vad-model', vadModelPath,
                 '--vad-threshold', '0.5',
                 '--vad-min-speech-duration-ms', '250',
-                '--vad-min-silence-duration-ms', '500',
-                '--vad-speech-pad-ms', '200'
+                '--vad-min-silence-duration-ms', '300',
+                '--vad-speech-pad-ms', '30',
+                '--vad-samples-overlap', '0.1'
             );
         }
 
@@ -392,6 +398,14 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             args.push('--translate', 'true');
 
         const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
+        
+        // Check for errors including unknown parameters
+        const combinedOutput = [process.output, process.standardOutput, process.standardError].filter(Boolean).join('\n');
+        if (process.exitCode !== 0 || combinedOutput.includes('unknown argument') || combinedOutput.match(/^error:/im)) {
+            Logger.ELog(`[whisper-sub] whisper-cli failed: ${combinedOutput}`);
+            return { ...process, hasFailed: true };
+        }
+        
         return process;
     };
 
@@ -481,7 +495,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             const transcriptModel = assumedLanguage === 'en' ? englishModel : multilingualModel;
             const process = runWhisper(audioSample, tempBase, detected || 'auto', false, transcriptModel);
 
-            if (process.exitCode !== 0) {
+            if (process.exitCode !== 0 || process.hasFailed) {
                 Logger.WLog(`[whisper-sub] whisper-cli failed for track ${i}: ${process.output}`);
                 return Flow.Fail('Whisper Execution Failed');
             }
@@ -542,7 +556,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
                     const englishBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
                     const englishProcess = runWhisper(audioSample, englishBase, 'en', false, englishModel);
-                    if (englishProcess.exitCode !== 0) {
+                    if (englishProcess.exitCode !== 0 || englishProcess.hasFailed) {
                         Logger.WLog(`[whisper-sub] English transcription failed for track ${i}: ${englishProcess.output}`);
                         return Flow.Fail('Whisper Execution Failed');
                     }
@@ -567,7 +581,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             }
             const translateBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
             const translateProcess = runWhisper(audioSample, translateBase, sourceLang, true, multilingualModel);
-            if (translateProcess.exitCode !== 0) {
+            if (translateProcess.exitCode !== 0 || translateProcess.hasFailed) {
                 Logger.WLog(`[whisper-sub] Translation to English failed for track ${i}: ${translateProcess.output}`);
                 return Flow.Fail('Whisper Execution Failed');
             }

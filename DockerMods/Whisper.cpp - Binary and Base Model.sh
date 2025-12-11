@@ -1,9 +1,9 @@
 # ----------------------------------------------------------------------------------------------------
 # Name: Whisper.cpp - Binary and Base Model
-# Description: Installs the whisper.cpp binary with Vulkan support and downloads the ggml-base
-#              multilingual and English models into /app/common/whispercpp/models.
+# Description: Installs the whisper.cpp binary (auto-detects GPU type and CPU capabilities) and downloads the ggml-base
+#              multilingual and English models, as well as the Silero VAD model into /app/common/whispercpp/models.
 # Author: Gas-X-ExtraStrength
-# Revision: 2
+# Revision: 5
 # Icon: https://meta-l.cdn.bubble.io/cdn-cgi/image/w=64,h=64,f=auto,dpr=2,fit=contain/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -21,7 +21,6 @@ BASE_MULTILINGUAL="${MODEL_DIR}/ggml-base.bin"
 BASE_ENGLISH="${MODEL_DIR}/ggml-base.en.bin"
 BIN_LINK="/usr/local/bin/whisper-cli"
 VERSION="1.8.2"
-BINARY_URL="https://github.com/natoriousbigg/whisper.cpp/releases/download/v${VERSION}/whisper-cli-v${VERSION}-ubuntu-x64-vulkan.zip"
 MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
 MODEL_EN_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
 
@@ -55,12 +54,58 @@ if ! command -v vulkaninfo >/dev/null 2>&1; then
     packages+=(vulkan-tools)
 fi
 
+if ! command -v lspci >/dev/null 2>&1; then
+    log "pciutils not found. Installing pciutils for GPU detection."
+    packages+=(pciutils)
+fi
+
 if [ ${#packages[@]} -gt 0 ]; then
     apt-get -qq update
     apt-get install -yqq "${packages[@]}"
 fi
 
-log "Downloading prebuilt whisper.cpp v${VERSION} binary."
+# Detect GPU and CPU capabilities to choose appropriate binary
+detect_binary_type() {
+    # 1. Check for Nvidia GPU → CUDA
+    if command -v nvidia-smi >/dev/null 2>&1; then
+        if nvidia-smi >/dev/null 2>&1; then
+            log "Nvidia GPU detected. Will use CUDA-accelerated binary."
+            echo "cuda"
+            return
+        fi
+    fi
+    
+    # 2. Check for Intel or AMD GPU → Vulkan
+    # Check for Intel GPU (integrated or discrete, including Arc)
+    if lspci 2>/dev/null | grep -iE "VGA.*Intel|Display.*Intel|Intel Corporation.*Graphics" >/dev/null 2>&1; then
+        log "Intel GPU detected. Will use Vulkan binary."
+        echo "vulkan"
+        return
+    fi
+    
+    # Check for AMD GPU (including modern naming conventions)
+    if lspci 2>/dev/null | grep -iE "VGA.*AMD|VGA.*ATI|Display.*AMD|Display.*ATI|AMD.*Graphics|ATI.*Graphics" >/dev/null 2>&1; then
+        log "AMD GPU detected. Will use Vulkan binary."
+        echo "vulkan"
+        return
+    fi
+    
+    # 3. Check for AVX512 support in CPU (case-insensitive) → Vulkan
+    if grep -iq avx512 /proc/cpuinfo 2>/dev/null; then
+        log "AVX512 CPU support detected. Will use Vulkan binary."
+        echo "vulkan"
+        return
+    fi
+    
+    # 4. No GPU and no AVX512 → NoAVX512
+    log "No GPU or AVX512 support detected. Will use NoAVX512 binary."
+    echo "noavx512"
+}
+
+BINARY_TYPE=$(detect_binary_type)
+BINARY_URL="https://github.com/natoriousbigg/whisper.cpp/releases/download/v${VERSION}/whisper-cli-v${VERSION}-ubuntu-x64-${BINARY_TYPE}.zip"
+
+log "Downloading prebuilt whisper.cpp v${VERSION} binary (${BINARY_TYPE})."
 # Clean existing binaries to ensure fresh installation
 if [ -d "${BIN_DIR}" ]; then
     log "Removing existing binaries from ${BIN_DIR}."
@@ -136,6 +181,17 @@ if [ -f "${BASE_ENGLISH}" ]; then
 else
     log "Downloading English base model to ${BASE_ENGLISH}."
     curl -L --fail "${MODEL_EN_URL}" -o "${BASE_ENGLISH}"
+fi
+
+# Download Silero VAD model
+VAD_MODEL_URL="https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin"
+VAD_MODEL_PATH="${MODEL_DIR}/ggml-silero-v6.2.0.bin"
+
+if [ -f "${VAD_MODEL_PATH}" ]; then
+    log "Silero VAD model already present at ${VAD_MODEL_PATH}; skipping download."
+else
+    log "Downloading Silero VAD model."
+    curl -L --fail "${VAD_MODEL_URL}" -o "${VAD_MODEL_PATH}"
 fi
 
 log "whisper.cpp installation complete. Models installed under ${MODEL_DIR}."
