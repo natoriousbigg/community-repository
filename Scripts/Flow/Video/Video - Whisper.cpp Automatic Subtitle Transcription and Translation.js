@@ -198,7 +198,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 const current = entries[i];
                 
                 if (!current || !current.text) {
-                    Logger.WLog(`[whisper-sub] Post-processing: Skipping invalid entry at index ${i}`);
+                    Logger.WLog(`[whisper-sub] Post-processing: Skipping invalid entry at index ${current?.index || i}`);
                     continue;
                 }
                 
