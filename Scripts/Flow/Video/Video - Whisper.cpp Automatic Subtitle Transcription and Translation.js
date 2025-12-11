@@ -383,7 +383,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 '--vad-threshold', '0.5',
                 '--vad-min-speech-duration-ms', '250',
                 '--vad-min-silence-duration-ms', '300',
-                '--vad-speech-pad-ms', '30',
+                '--vad-speech-pad-ms', '20',
                 '--vad-samples-overlap', '0.1'
             );
         }
