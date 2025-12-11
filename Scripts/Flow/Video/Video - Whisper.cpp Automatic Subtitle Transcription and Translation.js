@@ -138,15 +138,15 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
     // Validate whisper-models input: check for invalid file or empty folder
     if (modelOverride) {
         if (!overrideIsFile && !overrideIsDirectory) {
-            Logger.ELog(`[whisper-sub] Invalid whisper-models path: '${modelOverride}' is not a valid .bin file or directory.`);
-            Flow.Fail('Whisper Model Folder Empty');
+            Logger.ELog(`[whisper-sub] Invalid whisper-models path: '${modelOverride}' is not a valid .bin file or directory. Please download and set variable 'whisper-models'`);
+            Flow.Fail(' Invalid whisper-models path: '${modelOverride}' is not a valid .bin file or directory.');
             return -1;
         }
         if (overrideIsDirectory) {
             const binFiles = System.IO.Directory.GetFiles(modelOverride, '*.bin');
             if (!binFiles || binFiles.length === 0) {
-                Logger.ELog(`[whisper-sub] whisper-models folder '${modelOverride}' contains no .bin files.`);
-                Flow.Fail('Whisper Model Folder Empty');
+                Logger.ELog(`[whisper-sub] whisper-models folder '${modelOverride}' contains no .bin files. Please download and set variable 'whisper-models'`);
+                Flow.Fail('whisper-models folder '${modelOverride}' contains no .bin files. Please download and set variable 'whisper-models'');
                 return -1;
             }
         }
@@ -206,7 +206,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
     if (missing.length > 0) {
         Logger.ELog(`[whisper-sub] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
-        const installMsg = "Install the Whisper.cpp DockerMod for the binary and base models plus the 'Whisper.cpp - Large V3 Turbo Model' DockerMod for the preferred model, or provide paths via 'whisper' and 'whisper-models'.";
+        const installMsg = "Install the 'Whisper.cpp - Binary and Base Model' DockerMod for the binary and base model, or download binary and models manually, and set variable 'whisper' and 'whisper-models'.";
         Logger.ELog(`[whisper-sub] ${installMsg}`);
         return Flow.Fail('Whisper.cpp and/or required model missing, please install and set variables');
     }
