@@ -39,8 +39,15 @@ function Script(MinDurationMs, MaxCharsPerLine, ShortSegmentThreshold, LongSegme
             for (const srtFile of allSrtFiles) {
                 const srtBaseName = System.IO.Path.GetFileNameWithoutExtension(srtFile);
                 // Check if it matches: basename.srt or basename.xx.srt (where xx is language code)
-                if (srtBaseName === baseName || srtBaseName.startsWith(baseName + '.')) {
+                if (srtBaseName === baseName) {
+                    // Exact match: basename.srt
                     paths.push(srtFile);
+                } else if (srtBaseName.startsWith(baseName + '.')) {
+                    // Check for language code pattern: basename.xx.srt or basename.xxx.srt
+                    const suffix = srtBaseName.substring(baseName.length + 1);
+                    if (/^[a-z]{2,3}$/i.test(suffix)) {
+                        paths.push(srtFile);
+                    }
                 }
             }
             
