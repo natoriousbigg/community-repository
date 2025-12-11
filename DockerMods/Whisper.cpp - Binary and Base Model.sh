@@ -21,7 +21,7 @@ BASE_MULTILINGUAL="${MODEL_DIR}/ggml-base.bin"
 BASE_ENGLISH="${MODEL_DIR}/ggml-base.en.bin"
 BIN_LINK="/usr/local/bin/whisper-cli"
 VERSION="1.8.2"
-BINARY_URL="https://github.com/natoriousbigg/whisper.cpp/releases/download/v${VERSION}/whisper-cli-v${VERSION}-ubuntu-x64-openblas-vulkan.zip"
+BINARY_URL="https://github.com/natoriousbigg/whisper.cpp/releases/download/v${VERSION}/whisper-cli-v${VERSION}-ubuntu-x64-vulkan.zip"
 MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
 MODEL_EN_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
 
