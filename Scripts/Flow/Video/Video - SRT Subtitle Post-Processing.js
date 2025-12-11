@@ -1,7 +1,7 @@
 /**
  * @name Video - SRT Subtitle Post-Processing
  * @uid 2e2e4d1e-7f7c-5b45-cg3b-ggc0c6e7g2bf
- * @description Post-processes SRT subtitle files to remove duplicates, fix hallucinations, and rebalance uneven sentence splits.
+ * @description Post-processes SRT subtitle files to remove duplicates, fix hallucinations, and rebalance uneven sentence splits. Can process Whisper-generated subtitles or existing .srt files in the original folder.
  * @author OpenAI-Assistant
  * @revision 1
  * @output Subtitles post-processed
@@ -10,25 +10,78 @@
  * @param {int} MaxCharsPerLine Maximum characters per line before splitting (default: 47).
  * @param {int} ShortSegmentThreshold Word count to consider a segment "short" for rebalancing (default: 3).
  * @param {int} LongSegmentThreshold Word count to consider a segment "long" for rebalancing (default: 10).
- * @param {number} SimilarityThreshold Similarity ratio (0-1) to consider texts as duplicates (default: 0.85).
+ * @param {int} SimilarityThreshold Similarity percentage (0-100) to consider texts as duplicates (default: 85).
+ * @param {bool} ProcessExistingSrtFiles Process all .srt files in the original video folder instead of only Whisper-generated ones.
  */
-function Script(MinDurationMs, MaxCharsPerLine, ShortSegmentThreshold, LongSegmentThreshold, SimilarityThreshold) {
-    // Get the subtitle paths from the previous script
-    const subtitlePaths = Variables.CreatedSubtitlePaths;
+function Script(MinDurationMs, MaxCharsPerLine, ShortSegmentThreshold, LongSegmentThreshold, SimilarityThreshold, ProcessExistingSrtFiles) {
+    const processExisting = typeof ProcessExistingSrtFiles === 'boolean' ? ProcessExistingSrtFiles : false;
     
-    if (!subtitlePaths || subtitlePaths.trim() === '') {
-        Logger.WLog('[srt-postproc] No subtitle paths found in Variables.CreatedSubtitlePaths');
-        return 2;
+    let paths = [];
+    
+    if (processExisting) {
+        // Process all .srt files in the original video folder
+        const workingFile = Variables.file?.FullName;
+        
+        if (!workingFile) {
+            Logger.ELog('[srt-postproc] Cannot process existing SRT files: working file path not available');
+            return -1;
+        }
+        
+        const originalDir = System.IO.Path.GetDirectoryName(workingFile);
+        const baseName = System.IO.Path.GetFileNameWithoutExtension(workingFile);
+        
+        Logger.ILog(`[srt-postproc] Searching for .srt files in: ${originalDir}`);
+        
+        try {
+            // Get all .srt files that match the base video filename
+            const allSrtFiles = System.IO.Directory.GetFiles(originalDir, '*.srt');
+            
+            for (const srtFile of allSrtFiles) {
+                const srtBaseName = System.IO.Path.GetFileNameWithoutExtension(srtFile);
+                // Check if it matches: basename.srt or basename.xx.srt (where xx is language code)
+                if (srtBaseName === baseName) {
+                    // Exact match: basename.srt
+                    paths.push(srtFile);
+                } else if (srtBaseName.startsWith(baseName + '.')) {
+                    // Check for language code pattern: basename.xx.srt or basename.xxx.srt
+                    const suffix = srtBaseName.substring(baseName.length + 1);
+                    if (/^[a-z]{2,3}$/i.test(suffix)) {
+                        paths.push(srtFile);
+                    }
+                }
+            }
+            
+            if (paths.length === 0) {
+                Logger.WLog(`[srt-postproc] No .srt files found matching '${baseName}' in ${originalDir}`);
+                return 2;
+            }
+            
+            Logger.ILog(`[srt-postproc] Found ${paths.length} existing .srt file(s) to process`);
+            
+        } catch (err) {
+            Logger.ELog(`[srt-postproc] Error scanning directory for .srt files: ${err}`);
+            return -1;
+        }
+        
+    } else {
+        // Use paths from Variables.CreatedSubtitlePaths (Whisper-generated)
+        const subtitlePaths = Variables.CreatedSubtitlePaths;
+        
+        if (!subtitlePaths || subtitlePaths.trim() === '') {
+            Logger.WLog('[srt-postproc] No subtitle paths found in Variables.CreatedSubtitlePaths');
+            Logger.ILog('[srt-postproc] Tip: Enable "ProcessExistingSrtFiles" to process existing .srt files instead');
+            return 2;
+        }
+        
+        paths = subtitlePaths.split('|').filter(p => p.trim());
+        
+        if (paths.length === 0) {
+            Logger.WLog('[srt-postproc] No valid subtitle paths to process');
+            return 2;
+        }
+        
+        Logger.ILog(`[srt-postproc] Found ${paths.length} Whisper-generated subtitle file(s) to post-process`);
     }
-    
-    const paths = subtitlePaths.split('|').filter(p => p.trim());
-    
-    if (paths.length === 0) {
-        Logger.WLog('[srt-postproc] No valid subtitle paths to process');
-        return 2;
-    }
-    
-    Logger.ILog(`[srt-postproc] Found ${paths.length} subtitle file(s) to post-process`);
     
     // Parse settings with defaults
     const settings = {
@@ -36,7 +89,7 @@ function Script(MinDurationMs, MaxCharsPerLine, ShortSegmentThreshold, LongSegme
         maxCharsPerLine: parseInt(MaxCharsPerLine) || 47,
         shortSegmentThreshold: parseInt(ShortSegmentThreshold) || 3,
         longSegmentThreshold: parseInt(LongSegmentThreshold) || 10,
-        similarityThreshold: parseFloat(SimilarityThreshold) || 0.85
+        similarityThreshold: (parseInt(SimilarityThreshold) || 85) / 100.0  // Convert percentage to decimal
     };
     
     Logger.ILog(`[srt-postproc] Settings: minDuration=${settings.minDurationMs}ms, maxChars=${settings.maxCharsPerLine}, shortWords=${settings.shortSegmentThreshold}, longWords=${settings.longSegmentThreshold}, similarity=${settings.similarityThreshold}`);
