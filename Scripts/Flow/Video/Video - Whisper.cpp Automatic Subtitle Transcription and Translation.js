@@ -224,9 +224,13 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 const prev = processed[processed.length - 1];
                 const prevWords = countWords(prev.text);
                 const currentWords = countWords(current.text);
+                const timeBetween = current.startMs - prev.endMs;
 
-                if (prevWords >= postProcessSettings.longSegmentThreshold && currentWords <= postProcessSettings.shortSegmentThreshold) {
-                    // Merge and re-split evenly
+                // Only rebalance if entries are close together (< 2 seconds gap)
+                if (prevWords >= postProcessSettings.longSegmentThreshold && 
+                    currentWords <= postProcessSettings.shortSegmentThreshold && 
+                    timeBetween < 2000) {
+                    // Merge and re-split evenly (joins entries with space since they're separate segments)
                     const combinedText = prev.text + ' ' + current.text;
                     const combinedWords = countWords(combinedText);
                     
