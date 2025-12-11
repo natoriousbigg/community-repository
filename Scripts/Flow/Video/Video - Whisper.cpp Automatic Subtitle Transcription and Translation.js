@@ -14,8 +14,9 @@
  * @param {bool} FixAudioLanguages Update audio track language tags using detected languages before transcription.
  * @param {('OrgDir'|'WorkingDir')} SubtitleSaveDir Directory to save subtitles to. OrgDir - Original Directory. WorkingDir - Fileflows working directory.
  * @param {bool} DisableVAD Disable Voice Activity Detection (VAD) even if the model is available.
+ * @param {bool} DisablePostProcessing Disable SRT post-processing (duplicate removal, sentence rebalancing).
  */
-function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubtitles = false, DebugMode, NoGpu, FixAudioLanguages, SubtitleSaveDir, DisableVAD) {
+function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubtitles = false, DebugMode, NoGpu, FixAudioLanguages, SubtitleSaveDir, DisableVAD, DisablePostProcessing) {
     const vi = Variables.vi?.VideoInfo;
     const filePath = Variables.file?.FullName;
 
@@ -51,6 +52,18 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
     const disableGpu = parseBoolean(typeof Variables['NoGpu'] !== 'undefined' ? Variables['NoGpu'] : NoGpu, false);
     const fixAudioLanguages = parseBoolean(typeof Variables['FixAudioLanguages'] !== 'undefined' ? Variables['FixAudioLanguages'] : FixAudioLanguages, false);
     const disableVAD = parseBoolean(typeof Variables['DisableVAD'] !== 'undefined' ? Variables['DisableVAD'] : DisableVAD, false);
+    const disablePostProcessing = parseBoolean(typeof Variables['DisablePostProcessing'] !== 'undefined' ? Variables['DisablePostProcessing'] : DisablePostProcessing, false);
+
+    // =============================================
+    // POST-PROCESSING SETTINGS
+    // =============================================
+    const postProcessSettings = {
+        minDurationMs: 500,           // Minimum subtitle duration in milliseconds
+        maxCharsPerLine: 47,          // Maximum characters per line before splitting
+        shortSegmentThreshold: 3,     // Word count to consider a segment "short" for rebalancing
+        longSegmentThreshold: 10,     // Word count to consider a segment "long" for rebalancing
+        similarityThreshold: 0.85     // Similarity ratio (0-1) to consider texts as duplicates
+    };
 
     if (!keepOriginal && !translateToEnglish) {
         Logger.ELog('[whisper-sub] Whisper.cpp Aborted - Neither original Language or English translation were selected.');
@@ -68,6 +81,228 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         const iso1 = LanguageHelper?.GetIso1Code?.(trimmed) || '';
         const iso2 = LanguageHelper?.GetIso2Code?.(trimmed) || '';
         return (iso1 || iso2 || trimmed).toLowerCase();
+    };
+
+    const postProcessSrt = (srtPath) => {
+        if (!System.IO.File.Exists(srtPath)) {
+            Logger.WLog(`[whisper-sub] Post-processing skipped: file not found at ${srtPath}`);
+            return;
+        }
+
+        Logger.ILog(`[whisper-sub] Post-processing SRT: ${srtPath}`);
+
+        // Helper: Convert time to milliseconds
+        const timeToMs = (timeStr) => {
+            const match = timeStr.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3})/);
+            if (!match) return 0;
+            const [, h, m, s, ms] = match;
+            return parseInt(h) * 3600000 + parseInt(m) * 60000 + parseInt(s) * 1000 + parseInt(ms);
+        };
+
+        // Helper: Convert milliseconds to time string
+        const msToTime = (ms) => {
+            const hours = Math.floor(ms / 3600000);
+            const minutes = Math.floor((ms % 3600000) / 60000);
+            const seconds = Math.floor((ms % 60000) / 1000);
+            const milliseconds = ms % 1000;
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
+        };
+
+        // Helper: Normalize text for comparison
+        const normalizeText = (text) => {
+            return text.toLowerCase()
+                .replace(/[^\w\s]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+        };
+
+        // Helper: Calculate text similarity (Jaccard similarity)
+        const calculateSimilarity = (text1, text2) => {
+            const words1 = new Set(normalizeText(text1).split(' '));
+            const words2 = new Set(normalizeText(text2).split(' '));
+            const intersection = new Set([...words1].filter(x => words2.has(x)));
+            const union = new Set([...words1, ...words2]);
+            return union.size > 0 ? intersection.size / union.size : 0;
+        };
+
+        // Helper: Count words in text
+        const countWords = (text) => {
+            return text.trim().split(/\s+/).filter(w => w.length > 0).length;
+        };
+
+        // Helper: Split text into two balanced parts
+        const splitTextEvenly = (text) => {
+            const words = text.trim().split(/\s+/);
+            const mid = Math.ceil(words.length / 2);
+            return [
+                words.slice(0, mid).join(' '),
+                words.slice(mid).join(' ')
+            ];
+        };
+
+        // Read and parse SRT file
+        let content = System.IO.File.ReadAllText(srtPath);
+        const entries = [];
+        const blocks = content.split(/\n\s*\n/).filter(block => block.trim());
+
+        for (const block of blocks) {
+            const lines = block.split('\n').map(l => l.trim()).filter(l => l);
+            if (lines.length < 3) continue;
+
+            const index = parseInt(lines[0]);
+            const timeLine = lines[1];
+            const text = lines.slice(2).join('\n');
+
+            const match = timeLine.match(/(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})/);
+            if (!match) continue;
+
+            entries.push({
+                index,
+                startTime: match[1],
+                endTime: match[2],
+                startMs: timeToMs(match[1]),
+                endMs: timeToMs(match[2]),
+                text,
+                originalText: text
+            });
+        }
+
+        if (entries.length === 0) {
+            Logger.WLog(`[whisper-sub] No valid entries found in ${srtPath}`);
+            return;
+        }
+
+        let changeLog = [];
+        const processed = [];
+
+        // Process entries
+        for (let i = 0; i < entries.length; i++) {
+            const current = entries[i];
+            const duration = current.endMs - current.startMs;
+
+            // Skip very short duration entries
+            if (duration < postProcessSettings.minDurationMs) {
+                changeLog.push(`Removed entry ${current.index}: duration ${duration}ms < ${postProcessSettings.minDurationMs}ms`);
+                continue;
+            }
+
+            // Check for internal repetition (hallucination)
+            const lines = current.text.split('\n');
+            if (lines.length > 1) {
+                const normalizedLines = lines.map(l => normalizeText(l));
+                const uniqueNormalizedLines = [...new Set(normalizedLines)];
+                if (uniqueNormalizedLines.length < normalizedLines.length) {
+                    // Keep first occurrence of each unique normalized line
+                    const seen = new Set();
+                    const dedupedLines = lines.filter((line, idx) => {
+                        const normalized = normalizedLines[idx];
+                        if (seen.has(normalized)) return false;
+                        seen.add(normalized);
+                        return true;
+                    });
+                    current.text = dedupedLines.join('\n');
+                    changeLog.push(`Fixed internal repetition in entry ${current.index}`);
+                }
+            }
+
+            // Check for duplicate with previous entry
+            if (processed.length > 0) {
+                const prev = processed[processed.length - 1];
+                const similarity = calculateSimilarity(prev.text, current.text);
+
+                if (similarity >= postProcessSettings.similarityThreshold) {
+                    // Merge entries
+                    changeLog.push(`Merged duplicate entries ${prev.index} and ${current.index} (similarity: ${similarity.toFixed(2)})`);
+                    prev.endTime = current.endTime;
+                    prev.endMs = current.endMs;
+                    continue;
+                }
+            }
+
+            // Check for uneven sentence splits (long followed by short)
+            if (processed.length > 0) {
+                const prev = processed[processed.length - 1];
+                const prevWords = countWords(prev.text);
+                const currentWords = countWords(current.text);
+                const timeBetween = current.startMs - prev.endMs;
+
+                // Only rebalance if entries are close together (< 2 seconds gap)
+                if (prevWords >= postProcessSettings.longSegmentThreshold && 
+                    currentWords <= postProcessSettings.shortSegmentThreshold && 
+                    timeBetween < 2000) {
+                    // Merge and re-split evenly (joins entries with space since they're separate segments)
+                    const combinedText = prev.text + ' ' + current.text;
+                    const combinedWords = countWords(combinedText);
+                    
+                    if (combinedWords > postProcessSettings.shortSegmentThreshold) {
+                        const [part1, part2] = splitTextEvenly(combinedText);
+                        const words1 = countWords(part1);
+                        const words2 = countWords(part2);
+                        const totalDuration = current.endMs - prev.startMs;
+                        const splitPoint = prev.startMs + Math.floor(totalDuration * words1 / combinedWords);
+
+                        changeLog.push(`Rebalanced entries ${prev.index} and ${current.index} (${prevWords}w + ${currentWords}w → ${words1}w + ${words2}w)`);
+                        prev.text = part1;
+                        prev.endTime = msToTime(splitPoint);
+                        prev.endMs = splitPoint;
+                        current.text = part2;
+                        current.startTime = msToTime(splitPoint);
+                        current.startMs = splitPoint;
+                    }
+                }
+            }
+
+            // Split overly long entries
+            const maxLength = postProcessSettings.maxCharsPerLine * 2;
+            if (current.text.length > maxLength && !current.text.includes('\n')) {
+                const [part1, part2] = splitTextEvenly(current.text);
+                const words1 = countWords(part1);
+                const words2 = countWords(part2);
+                const totalWords = words1 + words2;
+                const duration = current.endMs - current.startMs;
+                const splitPoint = current.startMs + Math.floor(duration * words1 / totalWords);
+
+                changeLog.push(`Split long entry ${current.index} (${current.text.length} chars) into two parts`);
+
+                processed.push({
+                    index: current.index,
+                    startTime: current.startTime,
+                    endTime: msToTime(splitPoint),
+                    startMs: current.startMs,
+                    endMs: splitPoint,
+                    text: part1
+                });
+
+                processed.push({
+                    index: current.index + 0.5,
+                    startTime: msToTime(splitPoint),
+                    endTime: current.endTime,
+                    startMs: splitPoint,
+                    endMs: current.endMs,
+                    text: part2
+                });
+                continue;
+            }
+
+            processed.push(current);
+        }
+
+        // Log changes
+        if (changeLog.length > 0) {
+            Logger.ILog(`[whisper-sub] Post-processing changes for ${System.IO.Path.GetFileName(srtPath)}:`);
+            for (const log of changeLog) {
+                Logger.ILog(`  - ${log}`);
+            }
+        } else {
+            Logger.ILog(`[whisper-sub] No post-processing changes needed for ${System.IO.Path.GetFileName(srtPath)}`);
+        }
+
+        // Write back to file
+        const output = processed.map((entry, idx) => {
+            return `${idx + 1}\n${entry.startTime} --> ${entry.endTime}\n${entry.text}\n`;
+        }).join('\n');
+
+        System.IO.File.WriteAllText(srtPath, output);
     };
 
     const commonPath = ((Variables.common || System.Environment.GetEnvironmentVariable('common') || '/app/common').toString().trim() || '/app/common').replace(/[\\/]+$/, '');
@@ -538,6 +773,10 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             created = true;
             processedLanguages.add(langForName);
             Logger.ILog(`[whisper-sub] Created subtitle for track ${i} -> ${targetSrt}.`);
+
+            if (!disablePostProcessing) {
+                postProcessSrt(targetSrt);
+            }
         }
 
         if (translateToEnglish) {
@@ -570,6 +809,10 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     Logger.ILog(`[whisper-sub] Created English subtitle for track ${i} -> ${englishSrt}.`);
                     processedLanguages.add('en');
                     created = true;
+
+                    if (!disablePostProcessing) {
+                        postProcessSrt(englishSrt);
+                    }
                 }
 
                 continue;
@@ -597,6 +840,10 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             }
 
             Logger.ILog(`[whisper-sub] Created translated subtitle for track ${i} -> ${translatedSrt}.`);
+
+            if (!disablePostProcessing) {
+                postProcessSrt(translatedSrt);
+            }
 
             if (!keepOriginal) {
                 processedLanguages.add(translatedDetected || langMeta || 'auto');
