@@ -76,15 +76,15 @@ detect_binary_type() {
     fi
     
     # 2. Check for Intel or AMD GPU → Vulkan
-    # Check for Intel GPU (integrated or discrete)
-    if lspci 2>/dev/null | grep -iE "VGA.*Intel|Display.*Intel" >/dev/null 2>&1; then
+    # Check for Intel GPU (integrated or discrete, including Arc)
+    if lspci 2>/dev/null | grep -iE "VGA.*Intel|Display.*Intel|Intel Corporation.*Graphics" >/dev/null 2>&1; then
         log "Intel GPU detected. Will use Vulkan binary."
         echo "vulkan"
         return
     fi
     
-    # Check for AMD GPU
-    if lspci 2>/dev/null | grep -iE "VGA.*AMD|VGA.*ATI|Display.*AMD|Display.*ATI" >/dev/null 2>&1; then
+    # Check for AMD GPU (including modern naming conventions)
+    if lspci 2>/dev/null | grep -iE "VGA.*AMD|VGA.*ATI|Display.*AMD|Display.*ATI|AMD.*Graphics|ATI.*Graphics" >/dev/null 2>&1; then
         log "AMD GPU detected. Will use Vulkan binary."
         echo "vulkan"
         return
