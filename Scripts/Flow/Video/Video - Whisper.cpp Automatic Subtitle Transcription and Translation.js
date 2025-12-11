@@ -139,14 +139,14 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
     if (modelOverride) {
         if (!overrideIsFile && !overrideIsDirectory) {
             Logger.ELog(`[whisper-sub] Invalid whisper-models path: '${modelOverride}' is not a valid .bin file or directory. Please download and set variable 'whisper-models'`);
-            Flow.Fail(' Invalid whisper-models path: '${modelOverride}' is not a valid .bin file or directory.');
+            Flow.Fail(` Invalid whisper-models path: '${modelOverride}' is not a valid .bin file or directory.`);
             return -1;
         }
         if (overrideIsDirectory) {
             const binFiles = System.IO.Directory.GetFiles(modelOverride, '*.bin');
             if (!binFiles || binFiles.length === 0) {
                 Logger.ELog(`[whisper-sub] whisper-models folder '${modelOverride}' contains no .bin files. Please download and set variable 'whisper-models'`);
-                Flow.Fail('whisper-models folder '${modelOverride}' contains no .bin files. Please download and set variable 'whisper-models'');
+                Flow.Fail(`whisper-models folder '${modelOverride}' contains no .bin files. Please download and set variable 'whisper-models'`);
                 return -1;
             }
         }
