@@ -185,18 +185,18 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         return pickPreferredModel(fallbackDirs, candidates);
     };
 
-    // If override is a .bin file, use it for both multilingual and English tasks
+    // If override is a .bin file, use it as multilingual model
     const multilingualModel = overrideIsFile
         ? modelOverride
         : resolveModel('', modelSearchDirs, multilingualCandidates);
 
-    let englishModel = overrideIsFile
-        ? modelOverride
-        : resolveModel('', modelSearchDirs, englishCandidates);
-
+    // Always try to find dedicated English models (ggml-medium.en.bin preferred over ggml-base.en.bin)
+    let englishModel = resolveModel('', modelSearchDirs, englishCandidates);
     let hasDedicatedEnglish = englishModel && System.IO.File.Exists(englishModel);
-    if (!englishModel || !System.IO.File.Exists(englishModel))
-        englishModel = multilingualModel;
+    // Fall back to the override file or multilingual model if no dedicated English model found
+    if (!hasDedicatedEnglish) {
+        englishModel = overrideIsFile ? modelOverride : multilingualModel;
+    }
 
     const missing = [];
     if (!System.IO.File.Exists(whisperCli))
