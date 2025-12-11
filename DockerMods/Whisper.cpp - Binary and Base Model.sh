@@ -1,9 +1,9 @@
 # ----------------------------------------------------------------------------------------------------
 # Name: Whisper.cpp - Binary and Base Model
 # Description: Installs the whisper.cpp binary with Vulkan support and downloads the ggml-base
-#              multilingual and English models into /app/common/whispercpp/models.
+#              multilingual and English models, as well as the Silero VAD model into /app/common/whispercpp/models.
 # Author: Gas-X-ExtraStrength
-# Revision: 2
+# Revision: 3
 # Icon: https://meta-l.cdn.bubble.io/cdn-cgi/image/w=64,h=64,f=auto,dpr=2,fit=contain/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -136,6 +136,17 @@ if [ -f "${BASE_ENGLISH}" ]; then
 else
     log "Downloading English base model to ${BASE_ENGLISH}."
     curl -L --fail "${MODEL_EN_URL}" -o "${BASE_ENGLISH}"
+fi
+
+# Download Silero VAD model
+VAD_MODEL_URL="https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin"
+VAD_MODEL_PATH="${MODEL_DIR}/ggml-silero-v6.2.0.bin"
+
+if [ -f "${VAD_MODEL_PATH}" ]; then
+    log "Silero VAD model already present at ${VAD_MODEL_PATH}; skipping download."
+else
+    log "Downloading Silero VAD model."
+    curl -L --fail "${VAD_MODEL_URL}" -o "${VAD_MODEL_PATH}"
 fi
 
 log "whisper.cpp installation complete. Models installed under ${MODEL_DIR}."
