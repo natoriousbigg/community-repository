@@ -497,7 +497,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
             if (process.exitCode !== 0 || process.hasFailed) {
                 Logger.WLog(`[whisper-sub] whisper-cli failed for track ${i}: ${process.output}`);
-                return Flow.Fail('Whisper Execution Failed with Unknown Parameter');
+                return Flow.Fail('Whisper Execution Failed');
             }
 
             const srtPathTemp = `${tempBase}.srt`;
@@ -558,7 +558,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     const englishProcess = runWhisper(audioSample, englishBase, 'en', false, englishModel);
                     if (englishProcess.exitCode !== 0 || englishProcess.hasFailed) {
                         Logger.WLog(`[whisper-sub] English transcription failed for track ${i}: ${englishProcess.output}`);
-                        return Flow.Fail('Whisper Execution Failed with Unknown Parameter');
+                        return Flow.Fail('Whisper Execution Failed');
                     }
 
                     const englishSrt = `${englishBase}.srt`;
@@ -583,7 +583,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             const translateProcess = runWhisper(audioSample, translateBase, sourceLang, true, multilingualModel);
             if (translateProcess.exitCode !== 0 || translateProcess.hasFailed) {
                 Logger.WLog(`[whisper-sub] Translation to English failed for track ${i}: ${translateProcess.output}`);
-                return Flow.Fail('Whisper Execution Failed with Unknown Parameter');
+                return Flow.Fail('Whisper Execution Failed');
             }
 
             const translateOutput = [translateProcess.output, translateProcess.standardOutput, translateProcess.standardError].filter(Boolean).join('\n');
