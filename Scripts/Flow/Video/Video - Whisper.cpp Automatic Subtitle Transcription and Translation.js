@@ -61,6 +61,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         minDurationMs: 500,           // Minimum subtitle duration in milliseconds
         maxCharsPerLine: 47,          // Maximum characters per line before splitting
         shortSegmentThreshold: 3,     // Word count to consider a segment "short" for rebalancing
+        longSegmentThreshold: 10,     // Word count to consider a segment "long" for rebalancing
         similarityThreshold: 0.85     // Similarity ratio (0-1) to consider texts as duplicates
     };
 
@@ -188,11 +189,19 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             // Check for internal repetition (hallucination)
             const lines = current.text.split('\n');
             if (lines.length > 1) {
-                const uniqueLines = [...new Set(lines.map(l => normalizeText(l)))];
-                if (uniqueLines.length < lines.length) {
-                    const dedupedText = [...new Set(lines)].join('\n');
+                const normalizedLines = lines.map(l => normalizeText(l));
+                const uniqueNormalizedLines = [...new Set(normalizedLines)];
+                if (uniqueNormalizedLines.length < normalizedLines.length) {
+                    // Keep first occurrence of each unique normalized line
+                    const seen = new Set();
+                    const dedupedLines = lines.filter((line, idx) => {
+                        const normalized = normalizedLines[idx];
+                        if (seen.has(normalized)) return false;
+                        seen.add(normalized);
+                        return true;
+                    });
+                    current.text = dedupedLines.join('\n');
                     changeLog.push(`Fixed internal repetition in entry ${current.index}`);
-                    current.text = dedupedText;
                 }
             }
 
@@ -216,7 +225,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 const prevWords = countWords(prev.text);
                 const currentWords = countWords(current.text);
 
-                if (prevWords >= 10 && currentWords <= postProcessSettings.shortSegmentThreshold) {
+                if (prevWords >= postProcessSettings.longSegmentThreshold && currentWords <= postProcessSettings.shortSegmentThreshold) {
                     // Merge and re-split evenly
                     const combinedText = prev.text + ' ' + current.text;
                     const combinedWords = countWords(combinedText);
