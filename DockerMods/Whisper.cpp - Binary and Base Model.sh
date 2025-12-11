@@ -1,9 +1,9 @@
 # ----------------------------------------------------------------------------------------------------
 # Name: Whisper.cpp - Binary and Base Model
-# Description: Installs the whisper.cpp binary with Vulkan support and downloads the ggml-base
+# Description: Installs the whisper.cpp binary (auto-detects CUDA/Vulkan/NoAVX512) and downloads the ggml-base
 #              multilingual and English models, as well as the Silero VAD model into /app/common/whispercpp/models.
 # Author: Gas-X-ExtraStrength
-# Revision: 3
+# Revision: 4
 # Icon: https://meta-l.cdn.bubble.io/cdn-cgi/image/w=64,h=64,f=auto,dpr=2,fit=contain/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -21,7 +21,6 @@ BASE_MULTILINGUAL="${MODEL_DIR}/ggml-base.bin"
 BASE_ENGLISH="${MODEL_DIR}/ggml-base.en.bin"
 BIN_LINK="/usr/local/bin/whisper-cli"
 VERSION="1.8.2"
-BINARY_URL="https://github.com/natoriousbigg/whisper.cpp/releases/download/v${VERSION}/whisper-cli-v${VERSION}-ubuntu-x64-vulkan.zip"
 MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
 MODEL_EN_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
 
@@ -60,7 +59,30 @@ if [ ${#packages[@]} -gt 0 ]; then
     apt-get install -yqq "${packages[@]}"
 fi
 
-log "Downloading prebuilt whisper.cpp v${VERSION} binary."
+# Detect GPU and CPU capabilities to choose appropriate binary
+detect_binary_type() {
+    # Check for Nvidia GPU
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+        log "Nvidia GPU detected. Will use CUDA-accelerated binary."
+        echo "cuda"
+        return
+    fi
+    
+    # Check for AVX512 support in CPU
+    if grep -q avx512 /proc/cpuinfo 2>/dev/null; then
+        log "AVX512 support detected. Will use Vulkan binary."
+        echo "vulkan"
+        return
+    fi
+    
+    log "No GPU or AVX512 support detected. Will use NoAVX512 binary."
+    echo "noavx512"
+}
+
+BINARY_TYPE=$(detect_binary_type)
+BINARY_URL="https://github.com/natoriousbigg/whisper.cpp/releases/download/v${VERSION}/whisper-cli-v${VERSION}-ubuntu-x64-${BINARY_TYPE}.zip"
+
+log "Downloading prebuilt whisper.cpp v${VERSION} binary (${BINARY_TYPE})."
 # Clean existing binaries to ensure fresh installation
 if [ -d "${BIN_DIR}" ]; then
     log "Removing existing binaries from ${BIN_DIR}."
