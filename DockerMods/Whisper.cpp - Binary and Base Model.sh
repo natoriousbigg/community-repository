@@ -62,14 +62,16 @@ fi
 # Detect GPU and CPU capabilities to choose appropriate binary
 detect_binary_type() {
     # Check for Nvidia GPU
-    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
-        log "Nvidia GPU detected. Will use CUDA-accelerated binary."
-        echo "cuda"
-        return
+    if command -v nvidia-smi >/dev/null 2>&1; then
+        if nvidia-smi >/dev/null 2>&1; then
+            log "Nvidia GPU detected. Will use CUDA-accelerated binary."
+            echo "cuda"
+            return
+        fi
     fi
     
-    # Check for AVX512 support in CPU
-    if grep -q avx512 /proc/cpuinfo 2>/dev/null; then
+    # Check for AVX512 support in CPU (case-insensitive)
+    if grep -iq avx512 /proc/cpuinfo 2>/dev/null; then
         log "AVX512 support detected. Will use Vulkan binary."
         echo "vulkan"
         return
