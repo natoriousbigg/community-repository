@@ -99,15 +99,15 @@ if curl -L --fail "${BINARY_URL}" -o "${zip_path}"; then
     done
     
     log "Installing all content to ${BIN_DIR}..."
-    # Copy all files from extracted directory to BIN_DIR, maintaining executability
+    # Copy all files from extracted directory to BIN_DIR
     while IFS= read -r -d '' file; do
         dest="${BIN_DIR}/$(basename "$file")"
-        if [ -x "$file" ]; then
-            install -m 0755 "$file" "$dest"
-        else
-            install -m 0644 "$file" "$dest"
-        fi
+        install -m 0644 "$file" "$dest"
     done < <(find "${extract_dir}" -type f -print0)
+    
+    # Make all files in bin directory executable (handles spaces in filenames)
+    log "Making all files in ${BIN_DIR} executable..."
+    find "${BIN_DIR}" -type f -exec chmod +x {} +
     
     # Verify whisper-cli binary was installed
     if [ ! -x "${BIN_DIR}/whisper-cli" ]; then
