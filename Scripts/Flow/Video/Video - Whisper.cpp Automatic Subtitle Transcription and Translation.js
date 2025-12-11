@@ -12,10 +12,10 @@
  * @param {bool} DebugMode Disable quiet whisper-cli output (removes --no-prints).
  * @param {bool} NoGpu Disable GPU acceleration.
  * @param {bool} FixAudioLanguages Update audio track language tags using detected languages before transcription.
- * @param {bool} DisableVAD Disable Voice Activity Detection (VAD) even if the model is available.
  * @param {('OrgDir'|'WorkingDir')} SubtitleSaveDir Directory to save subtitles to. OrgDir - Original Directory. WorkingDir - Fileflows working directory.
+ * @param {bool} DisableVAD Disable Voice Activity Detection (VAD) even if the model is available.
  */
-function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubtitles = false, DebugMode, NoGpu, FixAudioLanguages, DisableVAD, SubtitleSaveDir) {
+function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubtitles = false, DebugMode, NoGpu, FixAudioLanguages, SubtitleSaveDir, DisableVAD) {
     const vi = Variables.vi?.VideoInfo;
     const filePath = Variables.file?.FullName;
 
@@ -112,6 +112,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
     const installRoot = '/app/common/whispercpp';
     const modelDir = System.IO.Path.Combine(installRoot, 'models');
+    const vadModelFilename = 'ggml-silero-v6.2.0.bin';
     const pickPreferredModel = (directories, candidates) => {
         const candidatesLower = candidates.map((c) => c.toLowerCase());
         for (const dir of directories) {
@@ -217,14 +218,13 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         Logger.WLog('[whisper-sub] English Whisper.cpp model not found; using multilingual model for English audio.');
 
     // VAD model detection
-    const vadModelName = 'ggml-silero-v6.2.0.bin';
     let vadModelPath = '';
     
     if (!disableVAD) {
         for (const dir of modelSearchDirs) {
             if (!dir || !System.IO.Directory.Exists(dir))
                 continue;
-            const candidatePath = System.IO.Path.Combine(dir, vadModelName);
+            const candidatePath = System.IO.Path.Combine(dir, vadModelFilename);
             if (System.IO.File.Exists(candidatePath)) {
                 vadModelPath = candidatePath;
                 break;
