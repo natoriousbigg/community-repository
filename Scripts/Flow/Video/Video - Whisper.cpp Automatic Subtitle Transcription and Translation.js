@@ -13,8 +13,9 @@
  * @param {bool} NoGpu Disable GPU acceleration.
  * @param {bool} FixAudioLanguages Update audio track language tags using detected languages before transcription.
  * @param {('OrgDir'|'WorkingDir')} SubtitleSaveDir Directory to save subtitles to. OrgDir - Original Directory. WorkingDir - Fileflows working directory.
+ * @param {bool} DisableVAD Disable Voice Activity Detection (VAD) even if the model is available.
  */
-function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubtitles = false, DebugMode, NoGpu, FixAudioLanguages, SubtitleSaveDir) {
+function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubtitles = false, DebugMode, NoGpu, FixAudioLanguages, SubtitleSaveDir, DisableVAD) {
     const vi = Variables.vi?.VideoInfo;
     const filePath = Variables.file?.FullName;
 
@@ -49,6 +50,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
     const debugMode = parseBoolean(typeof Variables['DebugMode'] !== 'undefined' ? Variables['DebugMode'] : DebugMode, false);
     const disableGpu = parseBoolean(typeof Variables['NoGpu'] !== 'undefined' ? Variables['NoGpu'] : NoGpu, false);
     const fixAudioLanguages = parseBoolean(typeof Variables['FixAudioLanguages'] !== 'undefined' ? Variables['FixAudioLanguages'] : FixAudioLanguages, false);
+    const disableVAD = parseBoolean(typeof Variables['DisableVAD'] !== 'undefined' ? Variables['DisableVAD'] : DisableVAD, false);
 
     if (!keepOriginal && !translateToEnglish) {
         Logger.ELog('[whisper-sub] Whisper.cpp Aborted - Neither original Language or English translation were selected.');
@@ -110,6 +112,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
     const installRoot = '/app/common/whispercpp';
     const modelDir = System.IO.Path.Combine(installRoot, 'models');
+    const vadModelFilename = 'ggml-silero-v6.2.0.bin';
     const pickPreferredModel = (directories, candidates) => {
         const candidatesLower = candidates.map((c) => c.toLowerCase());
         for (const dir of directories) {
@@ -213,6 +216,29 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
     if (!hasDedicatedEnglish)
         Logger.WLog('[whisper-sub] English Whisper.cpp model not found; using multilingual model for English audio.');
+
+    // VAD model detection
+    let vadModelPath = '';
+    
+    if (!disableVAD) {
+        for (const dir of modelSearchDirs) {
+            if (!dir || !System.IO.Directory.Exists(dir))
+                continue;
+            const candidatePath = System.IO.Path.Combine(dir, vadModelFilename);
+            if (System.IO.File.Exists(candidatePath)) {
+                vadModelPath = candidatePath;
+                break;
+            }
+        }
+        
+        if (vadModelPath) {
+            Logger.ILog(`[whisper-sub] VAD model found at: ${vadModelPath}`);
+        } else {
+            Logger.ILog('[whisper-sub] VAD model not found. Transcription will proceed without Voice Activity Detection.');
+        }
+    } else {
+        Logger.ILog('[whisper-sub] VAD is disabled by user configuration.');
+    }
 
     const workingDir = Flow.TempPath || System.IO.Path.GetTempPath();
     const originalDir = System.IO.Path.GetDirectoryName(filePath);
@@ -344,6 +370,17 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             '--split-on-word', 'true',
             '--max-len', '60'
         ];
+
+        if (vadModelPath) {
+            args.push(
+                '--vad', 'true',
+                '--vad-model', vadModelPath,
+                '--vad-threshold', '0.5',
+                '--vad-min-speech-duration-ms', '250',
+                '--vad-min-silence-duration-ms', '500',
+                '--vad-speech-pad-ms', '200'
+            );
+        }
 
         if (disableGpu)
             args.push('--no-gpu', 'true');
