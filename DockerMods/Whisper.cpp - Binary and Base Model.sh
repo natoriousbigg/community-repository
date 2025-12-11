@@ -1,9 +1,9 @@
 # ----------------------------------------------------------------------------------------------------
 # Name: Whisper.cpp - Binary and Base Model
-# Description: Installs the whisper.cpp binary (auto-detects CUDA/Vulkan/NoAVX512) and downloads the ggml-base
+# Description: Installs the whisper.cpp binary (auto-detects GPU type and CPU capabilities) and downloads the ggml-base
 #              multilingual and English models, as well as the Silero VAD model into /app/common/whispercpp/models.
 # Author: Gas-X-ExtraStrength
-# Revision: 4
+# Revision: 5
 # Icon: https://meta-l.cdn.bubble.io/cdn-cgi/image/w=64,h=64,f=auto,dpr=2,fit=contain/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -54,6 +54,11 @@ if ! command -v vulkaninfo >/dev/null 2>&1; then
     packages+=(vulkan-tools)
 fi
 
+if ! command -v lspci >/dev/null 2>&1; then
+    log "pciutils not found. Installing pciutils for GPU detection."
+    packages+=(pciutils)
+fi
+
 if [ ${#packages[@]} -gt 0 ]; then
     apt-get -qq update
     apt-get install -yqq "${packages[@]}"
@@ -61,7 +66,7 @@ fi
 
 # Detect GPU and CPU capabilities to choose appropriate binary
 detect_binary_type() {
-    # Check for Nvidia GPU
+    # 1. Check for Nvidia GPU → CUDA
     if command -v nvidia-smi >/dev/null 2>&1; then
         if nvidia-smi >/dev/null 2>&1; then
             log "Nvidia GPU detected. Will use CUDA-accelerated binary."
@@ -70,13 +75,29 @@ detect_binary_type() {
         fi
     fi
     
-    # Check for AVX512 support in CPU (case-insensitive)
-    if grep -iq avx512 /proc/cpuinfo 2>/dev/null; then
-        log "AVX512 support detected. Will use Vulkan binary."
+    # 2. Check for Intel or AMD GPU → Vulkan
+    # Check for Intel GPU (integrated or discrete)
+    if lspci 2>/dev/null | grep -iE "VGA.*Intel|Display.*Intel" >/dev/null 2>&1; then
+        log "Intel GPU detected. Will use Vulkan binary."
         echo "vulkan"
         return
     fi
     
+    # Check for AMD GPU
+    if lspci 2>/dev/null | grep -iE "VGA.*AMD|VGA.*ATI|Display.*AMD|Display.*ATI" >/dev/null 2>&1; then
+        log "AMD GPU detected. Will use Vulkan binary."
+        echo "vulkan"
+        return
+    fi
+    
+    # 3. Check for AVX512 support in CPU (case-insensitive) → Vulkan
+    if grep -iq avx512 /proc/cpuinfo 2>/dev/null; then
+        log "AVX512 CPU support detected. Will use Vulkan binary."
+        echo "vulkan"
+        return
+    fi
+    
+    # 4. No GPU and no AVX512 → NoAVX512
     log "No GPU or AVX512 support detected. Will use NoAVX512 binary."
     echo "noavx512"
 }
