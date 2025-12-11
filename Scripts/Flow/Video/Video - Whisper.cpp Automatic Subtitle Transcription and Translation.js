@@ -193,8 +193,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             const processed = [];
 
             // Process entries
-            Logger.ILog(`[whisper-sub] Post-processing: Starting duplicate removal...`);
-            Logger.ILog(`[whisper-sub] Post-processing: Starting rebalancing...`);
+            Logger.ILog(`[whisper-sub] Post-processing: Processing ${entries.length} entries...`);
             for (let i = 0; i < entries.length; i++) {
                 const current = entries[i];
                 
@@ -331,14 +330,12 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             try {
                 System.IO.File.WriteAllText(srtPath, output);
                 // Verify write was successful
-                if (System.IO.File.Exists(srtPath)) {
-                    const newContent = System.IO.File.ReadAllText(srtPath);
-                    if (newContent.length > 0) {
-                        Logger.ILog(`[whisper-sub] Post-processing: Successfully wrote ${newContent.length} characters`);
-                    } else {
-                        Logger.ELog(`[whisper-sub] Post-processing: File appears empty after write`);
-                        return false;
-                    }
+                const fileInfo = new System.IO.FileInfo(srtPath);
+                if (fileInfo.Exists && fileInfo.Length > 0) {
+                    Logger.ILog(`[whisper-sub] Post-processing: Successfully wrote ${output.length} characters (${fileInfo.Length} bytes)`);
+                } else {
+                    Logger.ELog(`[whisper-sub] Post-processing: File appears empty or missing after write`);
+                    return false;
                 }
             } catch (writeErr) {
                 Logger.ELog(`[whisper-sub] Post-processing: Failed to write file: ${writeErr}`);
