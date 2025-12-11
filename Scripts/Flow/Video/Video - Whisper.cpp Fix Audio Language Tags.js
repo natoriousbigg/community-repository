@@ -30,7 +30,7 @@ function Script(NoGpu) {
     const isWindows = platform === 'Win32NT' || platform === 'Win32Windows';
 
     const variableWhisper = (Variables['whisper'] || '').toString().trim();
-    const variableModel = (Variables['whisper-model'] || '').toString().trim();
+    const variableModel = (Variables['whisper-models'] || '').toString().trim();
     const whisperCli = variableWhisper || Flow.GetToolPath('whisper-cli') || Flow.GetToolPath('whisper') || '/usr/local/bin/whisper-cli';
 
     const installRoot = '/app/common/whispercpp';
@@ -46,7 +46,27 @@ function Script(NoGpu) {
         return '';
     };
 
+    const variableModelLower = variableModel.toLowerCase();
+    const overrideIsFile = variableModel && System.IO.File.Exists(variableModel) && variableModelLower.endsWith('.bin');
     const overrideIsDirectory = variableModel && System.IO.Directory.Exists(variableModel);
+
+    // Validate whisper-models input: check for invalid file or empty folder
+    if (variableModel) {
+        if (!overrideIsFile && !overrideIsDirectory) {
+            Logger.ELog(`[whisper-cli] Invalid whisper-models path: '${variableModel}' is not a valid .bin file or directory.`);
+            Flow.Fail('Whisper Model Folder Empty');
+            return -1;
+        }
+        if (overrideIsDirectory) {
+            const binFiles = System.IO.Directory.GetFiles(variableModel, '*.bin');
+            if (!binFiles || binFiles.length === 0) {
+                Logger.ELog(`[whisper-cli] whisper-models folder '${variableModel}' contains no .bin files.`);
+                Flow.Fail('Whisper Model Folder Empty');
+                return -1;
+            }
+        }
+    }
+
     const modelSearchDirs = [];
     if (overrideIsDirectory)
         modelSearchDirs.push(variableModel);
@@ -83,9 +103,12 @@ function Script(NoGpu) {
         return pickFromDirectories(fallbackDirs, candidates);
     };
 
-    let multilingualModel = resolveModel(variableModel && !variableModel.toLowerCase().includes('.en.') ? variableModel : '', modelSearchDirs, multilingualCandidates);
+    // If override is a .bin file, use it for both multilingual and English tasks
+    let multilingualModel = overrideIsFile
+        ? variableModel
+        : resolveModel('', modelSearchDirs, multilingualCandidates);
     if (!multilingualModel)
-        multilingualModel = resolveModel(variableModel, modelSearchDirs, englishCandidates);
+        multilingualModel = resolveModel('', modelSearchDirs, englishCandidates);
 
     const missing = [];
     if (!System.IO.File.Exists(whisperCli))
@@ -95,7 +118,7 @@ function Script(NoGpu) {
 
     if (missing.length > 0) {
         Logger.ELog(`[whisper-cli] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
-        const installMsg = "Install the Whisper.cpp DockerMod for the binary and base models or provide paths via 'whisper' and 'whisper-model' (and optionally 'whisper-en-model').";
+        const installMsg = "Install the Whisper.cpp DockerMod for the binary and base models or provide paths via 'whisper' and 'whisper-models'.";
         Logger.ELog(`[whisper-cli] ${installMsg}`);
         return Flow.Fail('Whisper.cpp and/or required model missing, please install and set variables');
     }
