@@ -58,29 +58,70 @@ function Script(UseGpuAcceleration, GpuDevice) {
     const installRoot = '/app/common/whispercpp';
     const modelDir = System.IO.Path.Combine(installRoot, 'models');
     const legacyModelLink = System.IO.Path.Combine(modelDir, 'model.bin');
-    const modelOverride = (Variables['whisper-model'] || '').toString().trim();
+    const modelOverride = (Variables['whisper-models'] || '').toString().trim();
     const overrideLower = modelOverride.toLowerCase();
+    const overrideIsFile = modelOverride && System.IO.File.Exists(modelOverride) && overrideLower.endsWith('.bin');
+    const overrideIsDirectory = modelOverride && System.IO.Directory.Exists(modelOverride);
 
-    const modelCandidates = [];
-    const addModelCandidate = (candidate) => {
-        if (candidate && System.IO.File.Exists(candidate) && !modelCandidates.includes(candidate))
-            modelCandidates.push(candidate);
-    };
+    // Validate whisper-models input: check for invalid file or empty folder
+    if (modelOverride) {
+        if (!overrideIsFile && !overrideIsDirectory) {
+            Logger.ELog(`[ffmpeg-whisper] Invalid whisper-models path: '${modelOverride}' is not a valid .bin file or directory.`);
+            Flow.Fail('Whisper Model Folder Empty');
+            return -1;
+        }
+        if (overrideIsDirectory) {
+            const binFiles = System.IO.Directory.GetFiles(modelOverride, '*.bin');
+            if (!binFiles || binFiles.length === 0) {
+                Logger.ELog(`[ffmpeg-whisper] whisper-models folder '${modelOverride}' contains no .bin files.`);
+                Flow.Fail('Whisper Model Folder Empty');
+                return -1;
+            }
+        }
+    }
 
-    addModelCandidate(modelOverride && !overrideLower.includes('.en.') ? modelOverride : '');
-    addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'));
-    addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-large.bin'));
-    addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-medium.bin'));
-    addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-base.bin'));
-    addModelCandidate(legacyModelLink);
-    addModelCandidate(modelOverride && overrideLower.includes('.en.') ? modelOverride : '');
-    addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-medium.en.bin'));
-    addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-base.en.bin'));
+    // If override is a .bin file, use it directly for both English and Multilanguage tasks
+    let modelPath = '';
+    if (overrideIsFile) {
+        modelPath = modelOverride;
+    } else {
+        const modelCandidates = [];
+        const addModelCandidate = (candidate) => {
+            if (candidate && System.IO.File.Exists(candidate) && !modelCandidates.includes(candidate))
+                modelCandidates.push(candidate);
+        };
 
-    const modelPath = modelCandidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || '';
+        // If override is a directory, search there first
+        const searchDir = overrideIsDirectory ? modelOverride : modelDir;
+        addModelCandidate(System.IO.Path.Combine(searchDir, 'ggml-large-v3-turbo.bin'));
+        addModelCandidate(System.IO.Path.Combine(searchDir, 'ggml-large-v3.bin'));
+        addModelCandidate(System.IO.Path.Combine(searchDir, 'ggml-large.bin'));
+        addModelCandidate(System.IO.Path.Combine(searchDir, 'ggml-medium.bin'));
+        addModelCandidate(System.IO.Path.Combine(searchDir, 'ggml-base.bin'));
+        
+        // Also search default modelDir if override is a directory
+        if (overrideIsDirectory) {
+            addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-large-v3-turbo.bin'));
+            addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-large-v3.bin'));
+            addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-large.bin'));
+            addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-medium.bin'));
+            addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-base.bin'));
+        }
+        
+        addModelCandidate(legacyModelLink);
+        addModelCandidate(System.IO.Path.Combine(searchDir, 'ggml-medium.en.bin'));
+        addModelCandidate(System.IO.Path.Combine(searchDir, 'ggml-base.en.bin'));
+        
+        if (overrideIsDirectory) {
+            addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-medium.en.bin'));
+            addModelCandidate(System.IO.Path.Combine(modelDir, 'ggml-base.en.bin'));
+        }
+
+        modelPath = modelCandidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || '';
+    }
 
     if (!modelPath) {
-        const missingModelMsg = "Install the Whisper.cpp DockerMod for the binary and base models or provide paths via 'whisper' and 'whisper-model' (and optionally 'whisper-en-model').";
+        const missingModelMsg = "Install the Whisper.cpp DockerMod for the binary and base models or provide paths via 'whisper' and 'whisper-models'.";
         Logger.ELog(`[ffmpeg-whisper] ${missingModelMsg}`);
         Flow.Fail(missingModelMsg);
         return -1;

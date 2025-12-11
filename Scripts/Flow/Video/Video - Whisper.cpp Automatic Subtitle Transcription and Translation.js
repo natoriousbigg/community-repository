@@ -96,7 +96,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
     const isWindows = platform === 'Win32NT' || platform === 'Win32Windows';
 
     const whisperOverride = (Variables['whisper'] || '').toString().trim();
-    const modelOverride = (Variables['whisper-model'] || '').toString().trim();
+    const modelOverride = (Variables['whisper-models'] || '').toString().trim();
 
     const whisperCandidates = [
         whisperOverride,
@@ -132,7 +132,26 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
     };
 
     const overrideLower = modelOverride.toLowerCase();
+    const overrideIsFile = modelOverride && System.IO.File.Exists(modelOverride) && overrideLower.endsWith('.bin');
     const overrideIsDirectory = modelOverride && System.IO.Directory.Exists(modelOverride);
+
+    // Validate whisper-models input: check for invalid file or empty folder
+    if (modelOverride) {
+        if (!overrideIsFile && !overrideIsDirectory) {
+            Logger.ELog(`[whisper-sub] Invalid whisper-models path: '${modelOverride}' is not a valid .bin file or directory.`);
+            Flow.Fail('Whisper Model Folder Empty');
+            return -1;
+        }
+        if (overrideIsDirectory) {
+            const binFiles = System.IO.Directory.GetFiles(modelOverride, '*.bin');
+            if (!binFiles || binFiles.length === 0) {
+                Logger.ELog(`[whisper-sub] whisper-models folder '${modelOverride}' contains no .bin files.`);
+                Flow.Fail('Whisper Model Folder Empty');
+                return -1;
+            }
+        }
+    }
+
     const modelSearchDirs = [];
     if (overrideIsDirectory)
         modelSearchDirs.push(modelOverride);
@@ -166,15 +185,18 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         return pickPreferredModel(fallbackDirs, candidates);
     };
 
-    const multilingualModel = overrideLower && !overrideIsDirectory && !overrideLower.includes('.en.')
+    // If override is a .bin file, use it as multilingual model
+    const multilingualModel = overrideIsFile
         ? modelOverride
         : resolveModel('', modelSearchDirs, multilingualCandidates);
 
-    let englishModel = resolveModel(overrideLower.includes('.en.') ? modelOverride : '', modelSearchDirs, englishCandidates);
-
+    // Always try to find dedicated English models (ggml-medium.en.bin preferred over ggml-base.en.bin)
+    let englishModel = resolveModel('', modelSearchDirs, englishCandidates);
     let hasDedicatedEnglish = englishModel && System.IO.File.Exists(englishModel);
-    if (!englishModel || !System.IO.File.Exists(englishModel))
-        englishModel = multilingualModel;
+    // Fall back to the override file or multilingual model if no dedicated English model found
+    if (!hasDedicatedEnglish) {
+        englishModel = overrideIsFile ? modelOverride : multilingualModel;
+    }
 
     const missing = [];
     if (!System.IO.File.Exists(whisperCli))
@@ -184,7 +206,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
     if (missing.length > 0) {
         Logger.ELog(`[whisper-sub] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
-        const installMsg = "Install the Whisper.cpp DockerMod for the binary and base models plus the 'Whisper.cpp - Large V3 Turbo Model' DockerMod for the preferred model, or provide paths via 'whisper' and 'whisper-model'.";
+        const installMsg = "Install the Whisper.cpp DockerMod for the binary and base models plus the 'Whisper.cpp - Large V3 Turbo Model' DockerMod for the preferred model, or provide paths via 'whisper' and 'whisper-models'.";
         Logger.ELog(`[whisper-sub] ${installMsg}`);
         return Flow.Fail('Whisper.cpp and/or required model missing, please install and set variables');
     }
