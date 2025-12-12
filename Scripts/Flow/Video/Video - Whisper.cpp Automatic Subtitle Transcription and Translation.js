@@ -355,31 +355,10 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         if (disableGpu)
             args.push('--no-gpu');
 
-        // Use ExecuteArgs to capture progress
-        var executeArgs = new ExecuteArgs();
-        executeArgs.command = whisperCli;
-        executeArgs.argumentList = args;
-        
-        // Capture progress from stdout
-        executeArgs.add_Output((line) => {
-            let matches = line.match(/ ([0-9]+)%/i);
-            if (matches) {
-                Flow.PartPercentageUpdate(matches[1]);
-            }
+        const process = Flow.Execute({
+            command: whisperCli,
+            argumentList: args
         });
-        
-        // Also capture from stderr (whisper often outputs progress there)
-        executeArgs.add_Error((line) => {
-            let matches = line.match(/ ([0-9]+)%/i);
-            if (matches) {
-                Flow.PartPercentageUpdate(matches[1]);
-            }
-        });
-
-        const process = Flow.Execute(executeArgs);
-        
-        // Reset progress after completion
-        Flow.PartPercentageUpdate(0);
         
         if (process.exitCode !== 0) {
             Logger.WLog(`[whisper-sub] Language detection failed: ${process.output}`);
@@ -433,31 +412,10 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         if (translateFlag)
             args.push('--translate');
 
-        // Use ExecuteArgs to capture progress output in real-time
-        var executeArgs = new ExecuteArgs();
-        executeArgs.command = whisperCli;
-        executeArgs.argumentList = args;
-        
-        // Capture progress from stdout
-        executeArgs.add_Output((line) => {
-            let matches = line.match(/ ([0-9]+)%/i);
-            if (matches) {
-                Flow.PartPercentageUpdate(matches[1]);
-            }
+        const process = Flow.Execute({
+            command: whisperCli,
+            argumentList: args
         });
-        
-        // Also capture from stderr (whisper often outputs progress there)
-        executeArgs.add_Error((line) => {
-            let matches = line.match(/ ([0-9]+)%/i);
-            if (matches) {
-                Flow.PartPercentageUpdate(matches[1]);
-            }
-        });
-
-        const process = Flow.Execute(executeArgs);
-        
-        // Reset progress after completion
-        Flow.PartPercentageUpdate(0);
         
         // Check for actual errors
         const combinedOutput = [process.output, process.standardOutput, process.standardError].filter(Boolean).join('\n');
