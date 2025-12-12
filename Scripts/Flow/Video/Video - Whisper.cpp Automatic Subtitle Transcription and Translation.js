@@ -2,8 +2,8 @@
  * @name Video - Whisper.cpp Automatic Subtitle Transcription and Translation
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files using ggml-large-v3-turbo for all languages, with optional translation, flexible subtitle placement, and integrated post-processing.
- * @author OpenAI-Assistant
- * @revision 49
+ * @author Gas-X-Extra-Strength
+ * @revision 1
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English.
