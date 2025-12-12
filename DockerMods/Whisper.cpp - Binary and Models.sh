@@ -1,10 +1,11 @@
 # ----------------------------------------------------------------------------------------------------
 # Name: Whisper.cpp - Binary and Models
-# Description: Installs the whisper.cpp binary (auto-detects GPU type and CPU capabilities) and downloads the ggml-base
-#              multilingual model (for language detection), ggml-large-v3-turbo model (for transcription), and the Silero VAD 
-#              model into /app/common/whispercpp/models. Sets HOME=/temp to prevent shader cache permission errors.
+# Description: Installs the whisper.cpp binary (auto-detects GPU type and CPU capabilities) and downloads models for 
+#              dual-pathway transcription: ggml-base.bin (language detection), ggml-distil-large-v3.5.bin (English-optimized),
+#              ggml-large-v3-turbo.bin (multi-language), and Silero VAD model into /app/common/whispercpp/models. 
+#              Sets HOME=/temp to prevent shader cache permission errors.
 # Author: Gas-X-ExtraStrength
-# Revision: 7
+# Revision: 8
 # Icon: https://meta-l.cdn.bubble.io/cdn-cgi/image/w=64,h=64,f=auto,dpr=2,fit=contain/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -181,15 +182,26 @@ else
     curl -L --fail "${MODEL_URL}" -o "${BASE_MULTILINGUAL}"
 fi
 
-# Download large-v3-turbo model for transcription
-LARGE_V3_TURBO="${MODEL_DIR}/ggml-distil-large-v3.bin"
-LARGE_V3_TURBO_URL="https://huggingface.co/distil-whisper/distil-large-v3-ggml/resolve/main/ggml-distil-large-v3.bin"
+# Download English-optimized transcription model
+ENGLISH_MODEL="${MODEL_DIR}/ggml-distil-large-v3.5.bin"
+ENGLISH_MODEL_URL="https://huggingface.co/distil-whisper/distil-large-v3.5-ggml/resolve/main/ggml-model.bin"
 
-if [ -f "${LARGE_V3_TURBO}" ]; then
-    log "Large V3 Turbo model already present at ${LARGE_V3_TURBO}; skipping download."
+if [ -f "${ENGLISH_MODEL}" ]; then
+    log "English model already present at ${ENGLISH_MODEL}; skipping download."
 else
-    log "Downloading large-v3-turbo model to ${LARGE_V3_TURBO} (used for transcription)."
-    curl -L --fail "${LARGE_V3_TURBO_URL}" -o "${LARGE_V3_TURBO}"
+    log "Downloading English-optimized model to ${ENGLISH_MODEL} (used for English transcription)."
+    curl -L --fail "${ENGLISH_MODEL_URL}" -o "${ENGLISH_MODEL}"
+fi
+
+# Download multi-language transcription model
+MULTILANG_MODEL="${MODEL_DIR}/ggml-large-v3-turbo.bin"
+MULTILANG_MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"
+
+if [ -f "${MULTILANG_MODEL}" ]; then
+    log "Multi-language model already present at ${MULTILANG_MODEL}; skipping download."
+else
+    log "Downloading multi-language model to ${MULTILANG_MODEL} (used for non-English transcription)."
+    curl -L --fail "${MULTILANG_MODEL_URL}" -o "${MULTILANG_MODEL}"
 fi
 
 # Download Silero VAD model

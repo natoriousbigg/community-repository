@@ -1,7 +1,7 @@
 /**
  * @name Video - Whisper.cpp Automatic Subtitle Transcription and Translation
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
- * @description Transcribes each audio track with whisper-cli into language-tagged SRT files using ggml-large-v3-turbo for all languages, with optional translation, flexible subtitle placement, and integrated post-processing.
+ * @description Transcribes each audio track with whisper-cli into language-tagged SRT files using optimized models (ggml-distil-large-v3.5 for English, ggml-large-v3-turbo for other languages), with optional translation, flexible subtitle placement, and integrated post-processing.
  * @author Gas-X-Extra-Strength
  * @revision 1
  * @output Subtitles created
@@ -162,13 +162,17 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         modelSearchDirs.push(modelOverride);
     modelSearchDirs.push(modelDir);
 
-    // Transcription model candidates - prioritize large-v3-turbo for best quality and speed
-    const transcriptionCandidates = [
-        'ggml-distil-large-v3.bin',
+    // English-optimized model candidates (faster and more accurate for English)
+    const englishCandidates = [
+        'ggml-distil-large-v3.5.bin'
+    ];
+    
+    // Multi-language model candidates (best for non-English languages)
+    const multilingualCandidates = [
+        'ggml-large-v3-turbo.bin',
         'ggml-large-v3.bin',
         'ggml-large.bin',
-        'ggml-medium.bin',
-        'ggml-base.bin'
+        'ggml-medium.bin'
     ];
 
     const resolveModel = (explicitPath, fallbackDirs, candidates) => {
@@ -184,20 +188,24 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         return pickPreferredModel(fallbackDirs, candidates);
     };
 
-    // If override is a .bin file, use it as the transcription model
-    const transcriptionModel = overrideIsFile
+    // Resolve English and multi-language models
+    const englishModel = overrideIsFile
         ? modelOverride
-        : resolveModel('', modelSearchDirs, transcriptionCandidates);
+        : resolveModel('', modelSearchDirs, englishCandidates);
+    
+    const multilingualModel = overrideIsFile
+        ? modelOverride
+        : resolveModel('', modelSearchDirs, multilingualCandidates);
 
     // Use ggml-base.bin for faster language detection only
     const baseCandidates = ['ggml-base.bin'];
-    const baseModel = resolveModel('', modelSearchDirs, baseCandidates) || transcriptionModel;
+    const baseModel = resolveModel('', modelSearchDirs, baseCandidates) || englishModel || multilingualModel;
 
     const missing = [];
     if (!System.IO.File.Exists(whisperCli))
         missing.push(`binary at '${whisperCli}'`);
-    if (!transcriptionModel)
-        missing.push('Whisper.cpp transcription model (ggml-large-v3-turbo.bin recommended)');
+    if (!englishModel && !multilingualModel)
+        missing.push('Whisper.cpp transcription models (ggml-distil-large-v3.5.bin for English or ggml-large-v3-turbo.bin for multi-language)');
 
     if (missing.length > 0) {
         Logger.ELog(`[whisper-sub] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
@@ -370,6 +378,22 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         return normalizeLanguage(match ? match[1] : '');
     };
 
+    const selectTranscriptionModel = (detectedLanguage) => {
+        // Select model based on detected language
+        if (detectedLanguage === 'en' && englishModel) {
+            Logger.ILog(`[whisper-sub] Using English-optimized model: ${System.IO.Path.GetFileName(englishModel)}`);
+            return englishModel;
+        } else if (multilingualModel) {
+            Logger.ILog(`[whisper-sub] Using multi-language model: ${System.IO.Path.GetFileName(multilingualModel)}`);
+            return multilingualModel;
+        } else if (englishModel) {
+            // Fallback to English model if multi-language not available
+            Logger.WLog(`[whisper-sub] Multi-language model not found, falling back to English model: ${System.IO.Path.GetFileName(englishModel)}`);
+            return englishModel;
+        }
+        return null;
+    };
+
     const runWhisper = (audioPath, baseOutput, language, translateFlag, modelToUse) => {
         const args = [
             '--model', modelToUse,
@@ -513,6 +537,11 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         if (keepOriginal) {
             Flow.AdditionalInfoRecorder("Whisper", `Transcribing track ${i + 1}/${audioStreams.length} (${detected})`, 1);
             const tempBase = System.IO.Path.Combine(workingDir, `whisper_sub_track_${i}`);
+            const transcriptionModel = selectTranscriptionModel(detected);
+            if (!transcriptionModel) {
+                Logger.ELog('[whisper-sub] No suitable transcription model available');
+                return Flow.Fail('Whisper failed: No transcription model available');
+            }
             const process = runWhisper(audioSample, tempBase, detected || 'auto', false, transcriptionModel);
 
             if (process.exitCode !== 0 || process.hasFailed) {
@@ -581,7 +610,12 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
                     Flow.AdditionalInfoRecorder("Whisper", `Transcribing track ${i + 1}/${audioStreams.length} (English)`, 1);
                     const englishBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
-                    const englishProcess = runWhisper(audioSample, englishBase, 'en', false, transcriptionModel);
+                    const englishTranscriptionModel = selectTranscriptionModel('en');
+                    if (!englishTranscriptionModel) {
+                        Logger.ELog('[whisper-sub] No suitable transcription model available for English');
+                        return Flow.Fail('Whisper failed: No English transcription model available');
+                    }
+                    const englishProcess = runWhisper(audioSample, englishBase, 'en', false, englishTranscriptionModel);
                     if (englishProcess.exitCode !== 0 || englishProcess.hasFailed) {
                         Logger.WLog(`[whisper-sub] English transcription failed for track ${i}: ${englishProcess.output}`);
                         return Flow.Fail('Whisper failed: English transcription process returned error');
@@ -610,7 +644,12 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             }
             Flow.AdditionalInfoRecorder("Whisper", "Translating to English...", 1);
             const translateBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
-            const translateProcess = runWhisper(audioSample, translateBase, sourceLang, true, transcriptionModel);
+            const translateModel = selectTranscriptionModel(detected);
+            if (!translateModel) {
+                Logger.ELog('[whisper-sub] No suitable transcription model available for translation');
+                return Flow.Fail('Whisper failed: No transcription model available for translation');
+            }
+            const translateProcess = runWhisper(audioSample, translateBase, sourceLang, true, translateModel);
             if (translateProcess.exitCode !== 0 || translateProcess.hasFailed) {
                 Logger.WLog(`[whisper-sub] Translation to English failed for track ${i}: ${translateProcess.output}`);
                 return Flow.Fail('Whisper failed: Translation to English process returned error');

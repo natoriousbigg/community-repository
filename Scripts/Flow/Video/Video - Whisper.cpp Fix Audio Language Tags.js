@@ -73,11 +73,11 @@ function Script(NoGpu) {
     modelSearchDirs.push(modelDir);
 
     const multilingualCandidates = [
+        'ggml-base.bin',
         'ggml-large-v3-turbo.bin',
         'ggml-large-v3.bin',
         'ggml-large.bin',
         'ggml-medium.bin',
-        'ggml-base.bin',
         legacyModelLink ? System.IO.Path.GetFileName(legacyModelLink) : ''
     ].filter(Boolean);
 
