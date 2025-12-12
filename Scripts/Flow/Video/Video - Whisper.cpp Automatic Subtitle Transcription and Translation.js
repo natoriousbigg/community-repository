@@ -375,7 +375,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             '--max-context', '0',
             '--entropy-thold', '2.4',
             '--word-thold', '0.01',
-            '--no-speech-thold', '0.6',
+            '--no-speech-thold', '0.75',
             '--logprob-thold', '-0.5',
             '--print-progress',
             '--split-on-word',
@@ -387,11 +387,12 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             args.push(
                 '--vad',
                 '--vad-model', vadModelPath,
-                '--vad-threshold', '0.5',
+                '--vad-threshold', '0.6',
                 '--vad-min-speech-duration-ms', '250',
                 '--vad-min-silence-duration-ms', '300',
                 '--vad-speech-pad-ms', '50',
-                '--vad-samples-overlap', '0.1'
+                '--vad-samples-overlap', '0.1',
+                '--vad-max-speech-duration-s', '8'
             );
         }
 
@@ -640,10 +641,15 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         // Default post-processing settings
         const postProcessSettings = {
             minDurationMs: 300,
-            maxCharsPerLine: 47,
+            maxDurationMs: 6000,
+            minGapMs: 50,
+            minReadableDurationMs: 1000,
+            maxCharsPerLine: 60,
             shortSegmentThreshold: 3,
             longSegmentThreshold: 10,
-            similarityThreshold: 0.85
+            similarityThreshold: 0.85,
+            minWordsPerEntry: 3,
+            maxMsPerWord: 400
         };
         
         const postProcessSrt = (srtPath, settings) => {
@@ -759,12 +765,29 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                         continue;
                     }
                     
+                    // Validate timestamp ordering
+                    if (current.endMs <= current.startMs) {
+                        changeLog.push(`Fixed invalid timestamps in entry ${current.index}`);
+                        current.endMs = current.startMs + 2000; // Default 2 second duration
+                        current.endTime = msToTime(current.endMs);
+                    }
+                    
                     const duration = current.endMs - current.startMs;
 
                     // Skip very short duration entries
                     if (duration < settings.minDurationMs) {
                         changeLog.push(`Removed entry ${current.index}: duration ${duration}ms < ${settings.minDurationMs}ms`);
                         continue;
+                    }
+
+                    // Detect suspicious entries (likely music/silence detection errors)
+                    const wordCount = countWords(current.text);
+                    if (duration > 10000 && wordCount < 10) {
+                        changeLog.push(`Fixed suspicious entry ${current.index}: ${duration}ms for only ${wordCount} words`);
+                        // Compress to reasonable duration based on word count (~400ms per word, min 1.5s)
+                        const reasonableDuration = Math.max(1500, wordCount * settings.maxMsPerWord);
+                        current.endMs = current.startMs + reasonableDuration;
+                        current.endTime = msToTime(current.endMs);
                     }
 
                     // Check for internal repetition (hallucination)
@@ -796,6 +819,19 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                             changeLog.push(`Merged duplicate entries ${prev.index} and ${current.index} (similarity: ${similarity.toFixed(2)})`);
                             prev.endTime = current.endTime;
                             prev.endMs = current.endMs;
+                            continue;
+                        }
+                    }
+
+                    // Merge short word fragments
+                    if (countWords(current.text) < settings.minWordsPerEntry && processed.length > 0) {
+                        const prev = processed[processed.length - 1];
+                        const timeBetween = current.startMs - prev.endMs;
+                        if (timeBetween < 1000) { // Within 1 second
+                            prev.text = prev.text + ' ' + current.text;
+                            prev.endMs = current.endMs;
+                            prev.endTime = current.endTime;
+                            changeLog.push(`Merged short fragment "${current.text}" into previous entry`);
                             continue;
                         }
                     }
@@ -833,7 +869,48 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                         }
                     }
 
-                    // Split overly long entries
+                    // Split overly long entries based on duration
+                    const currentDuration = current.endMs - current.startMs;
+                    if (currentDuration > settings.maxDurationMs) {
+                        const currentWordCount = countWords(current.text);
+                        if (currentWordCount > 1) {
+                            // Split into chunks based on duration and word count
+                            const wordsPerChunk = Math.ceil(currentWordCount / Math.ceil(currentDuration / settings.maxDurationMs));
+                            const words = current.text.trim().split(/\s+/);
+                            const chunks = [];
+                            
+                            for (let j = 0; j < words.length; j += wordsPerChunk) {
+                                chunks.push(words.slice(j, j + wordsPerChunk).join(' '));
+                            }
+                            
+                            if (chunks.length > 1) {
+                                const timePerChunk = currentDuration / chunks.length;
+                                changeLog.push(`Split entry ${current.index} (${currentDuration}ms) into ${chunks.length} chunks`);
+                                
+                                for (let j = 0; j < chunks.length; j++) {
+                                    const chunkStart = current.startMs + Math.floor(j * timePerChunk);
+                                    const chunkEnd = j === chunks.length - 1 ? current.endMs : current.startMs + Math.floor((j + 1) * timePerChunk);
+                                    
+                                    processed.push({
+                                        index: current.index + (j * 0.1),
+                                        startTime: msToTime(chunkStart),
+                                        endTime: msToTime(chunkEnd),
+                                        startMs: chunkStart,
+                                        endMs: chunkEnd,
+                                        text: chunks[j]
+                                    });
+                                }
+                                continue;
+                            }
+                        } else {
+                            // Single word or empty - just cap the duration
+                            current.endMs = current.startMs + settings.maxDurationMs;
+                            current.endTime = msToTime(current.endMs);
+                            changeLog.push(`Capped duration of entry ${current.index} to ${settings.maxDurationMs}ms`);
+                        }
+                    }
+
+                    // Split overly long entries by character count
                     const maxLength = settings.maxCharsPerLine * 2;
                     if (current.text.length > maxLength && !current.text.includes('\n')) {
                         const [part1, part2] = splitTextEvenly(current.text);
