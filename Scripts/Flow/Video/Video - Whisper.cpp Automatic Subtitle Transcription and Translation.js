@@ -229,6 +229,9 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         Logger.ILog('[whisper-sub] VAD is disabled by user configuration.');
     }
 
+    // Initialize status
+    Flow.AdditionalInfoRecorder("Whisper", "Initializing...", 1);
+
     const workingDir = Flow.TempPath || System.IO.Path.GetTempPath();
     const originalDir = System.IO.Path.GetDirectoryName(filePath);
     const targetDir = saveLocation === 'WorkingDir' ? workingDir : originalDir;
@@ -352,7 +355,32 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         if (disableGpu)
             args.push('--no-gpu');
 
-        const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
+        // Use ExecuteArgs to capture progress
+        var executeArgs = new ExecuteArgs();
+        executeArgs.command = whisperCli;
+        executeArgs.argumentList = args;
+        
+        // Capture progress from stdout
+        executeArgs.add_Output((line) => {
+            let matches = line.match(/progress\s*=\s*(\d+)%/i);
+            if (matches) {
+                Flow.PartPercentageUpdate(parseInt(matches[1]));
+            }
+        });
+        
+        // Also capture from stderr (whisper often outputs progress there)
+        executeArgs.add_Error((line) => {
+            let matches = line.match(/progress\s*=\s*(\d+)%/i);
+            if (matches) {
+                Flow.PartPercentageUpdate(parseInt(matches[1]));
+            }
+        });
+
+        const process = Flow.Execute(executeArgs);
+        
+        // Reset progress after completion
+        Flow.PartPercentageUpdate(0);
+        
         if (process.exitCode !== 0) {
             Logger.WLog(`[whisper-sub] Language detection failed: ${process.output}`);
             return '';
@@ -405,7 +433,32 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         if (translateFlag)
             args.push('--translate');
 
-        const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
+        // Use ExecuteArgs to capture progress output in real-time
+        var executeArgs = new ExecuteArgs();
+        executeArgs.command = whisperCli;
+        executeArgs.argumentList = args;
+        
+        // Capture progress from stdout
+        executeArgs.add_Output((line) => {
+            // Match: "whisper_print_progress_callback: progress = 55%"
+            let matches = line.match(/progress\s*=\s*(\d+)%/i);
+            if (matches) {
+                Flow.PartPercentageUpdate(parseInt(matches[1]));
+            }
+        });
+        
+        // Also capture from stderr (whisper often outputs progress there)
+        executeArgs.add_Error((line) => {
+            let matches = line.match(/progress\s*=\s*(\d+)%/i);
+            if (matches) {
+                Flow.PartPercentageUpdate(parseInt(matches[1]));
+            }
+        });
+
+        const process = Flow.Execute(executeArgs);
+        
+        // Reset progress after completion
+        Flow.PartPercentageUpdate(0);
         
         // Check for actual errors
         const combinedOutput = [process.output, process.standardOutput, process.standardError].filter(Boolean).join('\n');
@@ -434,6 +487,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         if (!extractAudioSample(i, samplePath))
             return Flow.Fail('Whisper failed: Unable to extract audio sample for language detection');
 
+        Flow.AdditionalInfoRecorder("Whisper", `Detecting language for track ${i + 1}/${audioStreams.length}...`, 1);
         const detectedFromSample = detectLanguage(samplePath);
         if (!detectedFromSample) {
             Logger.WLog(`[whisper-sub] Could not determine language for track ${i} during sample detection.`);
@@ -500,6 +554,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         }
 
         if (keepOriginal) {
+            Flow.AdditionalInfoRecorder("Whisper", `Transcribing track ${i + 1}/${audioStreams.length} (${detected})`, 1);
             const tempBase = System.IO.Path.Combine(workingDir, `whisper_sub_track_${i}`);
             const process = runWhisper(audioSample, tempBase, detected || 'auto', false, transcriptionModel);
 
@@ -567,6 +622,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                         continue;
                     }
 
+                    Flow.AdditionalInfoRecorder("Whisper", `Transcribing track ${i + 1}/${audioStreams.length} (English)`, 1);
                     const englishBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
                     const englishProcess = runWhisper(audioSample, englishBase, 'en', false, transcriptionModel);
                     if (englishProcess.exitCode !== 0 || englishProcess.hasFailed) {
@@ -595,6 +651,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 Logger.ILog(`[whisper-sub] Skipping English translation for track ${i} because an English subtitle already exists.`);
                 continue;
             }
+            Flow.AdditionalInfoRecorder("Whisper", "Translating to English...", 1);
             const translateBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
             const translateProcess = runWhisper(audioSample, translateBase, sourceLang, true, transcriptionModel);
             if (translateProcess.exitCode !== 0 || translateProcess.hasFailed) {
@@ -636,6 +693,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
     // Integrated subtitle post-processing
     if (!disableSubtitlePostProcessing && createdSubtitles.length > 0) {
+        Flow.AdditionalInfoRecorder("Whisper", "Post-processing subtitles...", 1);
         Logger.ILog('[whisper-sub] Starting integrated subtitle post-processing...');
         
         // Default post-processing settings
@@ -777,9 +835,18 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 let changeLog = [];
                 const processed = [];
 
+                const totalEntries = entries.length;
+                
                 // Process entries
                 for (let i = 0; i < entries.length; i++) {
                     const current = entries[i];
+                    
+                    // Update progress every 10 entries to avoid too many UI updates
+                    if (i % 10 === 0 || i === totalEntries - 1) {
+                        const progressPercent = Math.round(((i + 1) / totalEntries) * 100);
+                        Flow.PartPercentageUpdate(progressPercent);
+                        Flow.AdditionalInfoRecorder("Whisper", `Post-processing: ${i + 1} / ${totalEntries} entries`, 1);
+                    }
                     
                     if (!current || !current.text) {
                         continue;
@@ -1068,6 +1135,9 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     processed.push(current);
                 }
 
+                // Final 100% when done
+                Flow.PartPercentageUpdate(100);
+
                 // Log changes
                 if (changeLog.length > 0) {
                     Logger.ILog(`[whisper-sub] Post-processing changes for ${System.IO.Path.GetFileName(srtPath)}:`);
@@ -1113,9 +1183,13 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         }
         
         Logger.ILog(`[whisper-sub] Post-processing complete: ${postProcessedCount} of ${createdSubtitles.length} subtitle(s) processed`);
+        
+        // Reset progress after post-processing
+        Flow.PartPercentageUpdate(0);
     } else if (disableSubtitlePostProcessing) {
         Logger.ILog('[whisper-sub] Subtitle post-processing is disabled');
     }
 
+    Flow.AdditionalInfoRecorder("Whisper", "Complete", 1);
     return 1;
 }
