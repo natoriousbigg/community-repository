@@ -1203,8 +1203,8 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                         current.startMs = prev.endMs + gap;
                         current.startTime = msToTime(current.startMs);
                         
-                        // Ensure end time is still after start time
-                        if (current.endMs <= current.startMs) {
+                        // Ensure end time is after start time
+                        if (current.endMs < current.startMs) {
                             current.endMs = current.startMs + (settings.timestampCorrectionDurationMs || 2000);
                             current.endTime = msToTime(current.endMs);
                             
@@ -1213,9 +1213,16 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                                 const next = processed[i + 1];
                                 if (current.endMs > next.startMs) {
                                     // Cap current end time to not overlap with next entry
-                                    current.endMs = next.startMs - gap;
-                                    current.endTime = msToTime(current.endMs);
-                                    // If this makes the entry too short, the next iteration will handle the next entry's position
+                                    const cappedEndMs = next.startMs - gap;
+                                    // Only cap if it still results in a valid duration
+                                    if (cappedEndMs > current.startMs) {
+                                        current.endMs = cappedEndMs;
+                                        current.endTime = msToTime(current.endMs);
+                                    } else {
+                                        // Entry is squeezed between prev and next, use minimal duration
+                                        current.endMs = current.startMs + gap;
+                                        current.endTime = msToTime(current.endMs);
+                                    }
                                 }
                             }
                         }
