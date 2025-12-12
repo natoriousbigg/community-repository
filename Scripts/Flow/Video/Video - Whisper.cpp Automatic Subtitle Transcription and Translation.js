@@ -197,11 +197,11 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
     if (!System.IO.File.Exists(whisperCli))
         missing.push(`binary at '${whisperCli}'`);
     if (!transcriptionModel)
-        missing.push('Whisper.cpp transcription model (ggml-large-v3-turbo.bin recommended, or ggml-large-v3.bin, ggml-medium.bin, ggml-base.bin)');
+        missing.push('Whisper.cpp transcription model (ggml-large-v3-turbo.bin recommended)');
 
     if (missing.length > 0) {
         Logger.ELog(`[whisper-sub] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
-        const installMsg = "Install the 'Whisper.cpp - Binary and Models' DockerMod for best results, or download binary and models manually, and set variable 'whisper' and 'whisper-models'.";
+        const installMsg = "Install DockerMod 'Whisper.cpp - Binary and Models'  set variable 'whisper' and 'whisper-models'.";
         Logger.ELog(`[whisper-sub] ${installMsg}`);
         return Flow.Fail('Whisper.cpp and/or required model missing, please install and set variables');
     }
@@ -639,7 +639,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         
         // Default post-processing settings
         const postProcessSettings = {
-            minDurationMs: 500,
+            minDurationMs: 300,
             maxCharsPerLine: 47,
             shortSegmentThreshold: 3,
             longSegmentThreshold: 10,
