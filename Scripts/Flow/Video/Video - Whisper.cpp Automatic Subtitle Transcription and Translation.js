@@ -414,8 +414,8 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         
         // Helper function to parse and update progress
         const handleProgressLine = (line) => {
-            // Match: "whisper_print_progress_callback: progress = 55%"
-            let matches = line.match(/progress\s*=\s*(\d+)%/i);
+            // Match progress pattern: "progress = 55%" (case-insensitive)
+            const matches = line.match(/progress\s*=\s*(\d+)%/i);
             if (matches) {
                 Flow.PartPercentageUpdate(parseInt(matches[1]));
             }
