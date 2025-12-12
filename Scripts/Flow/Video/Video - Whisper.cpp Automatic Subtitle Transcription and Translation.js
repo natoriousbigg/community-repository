@@ -172,7 +172,8 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         'ggml-large-v3-turbo.bin',
         'ggml-large-v3.bin',
         'ggml-large.bin',
-        'ggml-medium.bin'
+        'ggml-medium.bin',
+        'ggml-base.bin'
     ];
 
     const resolveModel = (explicitPath, fallbackDirs, candidates) => {
