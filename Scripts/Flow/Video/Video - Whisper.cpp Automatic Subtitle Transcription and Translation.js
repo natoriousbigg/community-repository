@@ -407,7 +407,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             '--logprob-thold', '-0.5',
             '--print-progress',
             '--split-on-word',
-            '--max-len', '80',
+            '--max-len', '50',
             '--suppress-nst'
         ];
 
