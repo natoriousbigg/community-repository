@@ -11,7 +11,7 @@
 set -eu
 
 log() {
-    echo "[whisper.cpp] $1"
+    echo "[whisper.cpp] $1" >&2
 }
 
 INSTALL_ROOT="/app/common/whispercpp"
