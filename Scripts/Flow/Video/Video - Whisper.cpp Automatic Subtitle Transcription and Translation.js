@@ -796,9 +796,11 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 }
 
                 if (entries.length === 0) {
-                    Logger.WLog(`[whisper-sub] Post-processing: No valid entries found in ${srtPath}`);
+                    Logger.WLog(`[whisper-sub] Post-processing: No valid entries found`);
                     return false;
                 }
+
+                Logger.ILog(`[whisper-sub] Post-processing: Parsed ${entries.length} entries, checking timestamp order...`);
 
                 let changeLog = [];
 
@@ -824,7 +826,14 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 entries.forEach((entry, idx) => {
                     entry.originalPosition = idx;
                 });
-                entries.sort((a, b) => a.startMs - b.startMs);
+                
+                // Sort by start time first, then by end time for tie-breaking
+                entries.sort((a, b) => {
+                    if (a.startMs === b.startMs) {
+                        return a.endMs - b.endMs;
+                    }
+                    return a.startMs - b.startMs;
+                });
                 
                 // Count how many entries changed position after sorting
                 let reorderedCount = 0;
@@ -837,7 +846,9 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 
                 if (reorderedCount > 0) {
                     changeLog.push(`Reordered ${reorderedCount} entries chronologically by start time`);
-                    Logger.ILog(`[whisper-sub] Post-processing: Reordered ${reorderedCount} entries by timestamp`);
+                    Logger.ILog(`[whisper-sub] Post-processing: Reordered ${reorderedCount} entries to fix timestamp sequence`);
+                } else {
+                    Logger.ILog(`[whisper-sub] Post-processing: All entries already in correct chronological order`);
                 }
 
                 // Third pass: Re-index entries after sorting
