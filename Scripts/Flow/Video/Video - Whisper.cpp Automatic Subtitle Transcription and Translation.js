@@ -1207,6 +1207,17 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                         if (current.endMs <= current.startMs) {
                             current.endMs = current.startMs + (settings.timestampCorrectionDurationMs || 2000);
                             current.endTime = msToTime(current.endMs);
+                            
+                            // If there's a next entry, ensure we don't overlap with it
+                            if (i < processed.length - 1) {
+                                const next = processed[i + 1];
+                                if (current.endMs > next.startMs) {
+                                    // Cap current end time to not overlap with next entry
+                                    current.endMs = next.startMs - gap;
+                                    current.endTime = msToTime(current.endMs);
+                                    // If this makes the entry too short, the next iteration will handle the next entry's position
+                                }
+                            }
                         }
                         
                         changeLog.push(`Fixed backwards timestamp between entries ${prev.index} and ${current.index}: adjusted start time to maintain chronological order`);
