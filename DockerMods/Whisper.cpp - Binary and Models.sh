@@ -182,8 +182,8 @@ else
 fi
 
 # Download large-v3-turbo model for transcription
-LARGE_V3_TURBO="${MODEL_DIR}/ggml-large-v3-turbo.bin"
-LARGE_V3_TURBO_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"
+LARGE_V3_TURBO="${MODEL_DIR}/ggml-distil-large-v3.bin"
+LARGE_V3_TURBO_URL="https://huggingface.co/distil-whisper/distil-large-v3-ggml/resolve/main/ggml-distil-large-v3.bin"
 
 if [ -f "${LARGE_V3_TURBO}" ]; then
     log "Large V3 Turbo model already present at ${LARGE_V3_TURBO}; skipping download."
