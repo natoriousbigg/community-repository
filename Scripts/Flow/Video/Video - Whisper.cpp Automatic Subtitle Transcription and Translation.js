@@ -649,7 +649,11 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             longSegmentThreshold: 10,
             similarityThreshold: 0.85,
             minWordsPerEntry: 3,
-            maxMsPerWord: 400
+            maxMsPerWord: 400,
+            invalidTimestampFixDurationMs: 2000,
+            fragmentMergeMaxGapMs: 1000,
+            suspiciousEntryMinDurationMs: 10000,
+            suspiciousEntryMaxWords: 10
         };
         
         const postProcessSrt = (srtPath, settings) => {
@@ -768,7 +772,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     // Validate timestamp ordering
                     if (current.endMs <= current.startMs) {
                         changeLog.push(`Fixed invalid timestamps in entry ${current.index}`);
-                        current.endMs = current.startMs + 2000; // Default 2 second duration
+                        current.endMs = current.startMs + settings.invalidTimestampFixDurationMs;
                         current.endTime = msToTime(current.endMs);
                     }
                     
@@ -782,7 +786,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
                     // Detect suspicious entries (likely music/silence detection errors)
                     const wordCount = countWords(current.text);
-                    if (duration > 10000 && wordCount < 10) {
+                    if (duration > settings.suspiciousEntryMinDurationMs && wordCount < settings.suspiciousEntryMaxWords) {
                         changeLog.push(`Fixed suspicious entry ${current.index}: ${duration}ms for only ${wordCount} words`);
                         // Compress to reasonable duration based on word count (~400ms per word, min 1.5s)
                         const reasonableDuration = Math.max(1500, wordCount * settings.maxMsPerWord);
@@ -827,7 +831,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     if (countWords(current.text) < settings.minWordsPerEntry && processed.length > 0) {
                         const prev = processed[processed.length - 1];
                         const timeBetween = current.startMs - prev.endMs;
-                        if (timeBetween < 1000) { // Within 1 second
+                        if (timeBetween < settings.fragmentMergeMaxGapMs) {
                             prev.text = prev.text + ' ' + current.text;
                             prev.endMs = current.endMs;
                             prev.endTime = current.endTime;
@@ -875,7 +879,8 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                         const currentWordCount = countWords(current.text);
                         if (currentWordCount > 1) {
                             // Split into chunks based on duration and word count
-                            const wordsPerChunk = Math.ceil(currentWordCount / Math.ceil(currentDuration / settings.maxDurationMs));
+                            const numChunks = Math.ceil(currentDuration / settings.maxDurationMs);
+                            const wordsPerChunk = Math.ceil(currentWordCount / numChunks);
                             const words = current.text.trim().split(/\s+/);
                             const chunks = [];
                             
