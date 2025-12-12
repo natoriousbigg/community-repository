@@ -408,7 +408,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             args.push('--translate');
 
         // Use ExecuteArgs to capture progress output in real-time
-        var executeArgs = new ExecuteArgs();
+        const executeArgs = new ExecuteArgs();
         executeArgs.command = whisperCli;
         executeArgs.argumentList = args;
         
