@@ -800,7 +800,20 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     return false;
                 }
 
-                // Sort entries by start time to ensure chronological order
+                let changeLog = [];
+
+                // First pass: Fix individual entry timestamps before sorting
+                // This ensures entries with backwards timestamps (endMs <= startMs) are corrected
+                // before they are sorted, so they end up in the correct chronological position
+                for (const entry of entries) {
+                    if (entry.endMs <= entry.startMs) {
+                        entry.endMs = entry.startMs + settings.timestampCorrectionDurationMs;
+                        entry.endTime = msToTime(entry.endMs);
+                        changeLog.push(`Fixed backwards timestamp in entry ${entry.index}: end time was before/equal to start time`);
+                    }
+                }
+
+                // Second pass: Sort entries chronologically by start time
                 // Track original position of each entry to detect reordering
                 entries.forEach((entry, idx) => {
                     entry.originalPosition = idx;
@@ -816,16 +829,16 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     delete entry.originalPosition; // Clean up temporary property
                 });
                 
-                // Re-index entries after sorting
+                if (reorderedCount > 0) {
+                    changeLog.push(`Reordered ${reorderedCount} entries chronologically by start time`);
+                    Logger.ILog(`[whisper-sub] Post-processing: Reordered ${reorderedCount} entries by timestamp`);
+                }
+
+                // Third pass: Re-index entries after sorting
                 entries.forEach((entry, idx) => {
                     entry.index = idx + 1;
                 });
 
-                let changeLog = [];
-                if (reorderedCount > 0) {
-                    changeLog.push(`Reordered ${reorderedCount} entries to fix timestamp sequence`);
-                    Logger.ILog(`[whisper-sub] Post-processing: Reordered ${reorderedCount} entries by timestamp`);
-                }
                 const processed = [];
 
                 const totalEntries = entries.length;
@@ -843,13 +856,6 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     
                     if (!current || !current.text) {
                         continue;
-                    }
-                    
-                    // Validate timestamp ordering
-                    if (current.endMs <= current.startMs) {
-                        changeLog.push(`Fixed invalid timestamps in entry ${current.index}`);
-                        current.endMs = current.startMs + settings.timestampCorrectionDurationMs;
-                        current.endTime = msToTime(current.endMs);
                     }
                     
                     const duration = current.endMs - current.startMs;
