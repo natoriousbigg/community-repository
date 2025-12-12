@@ -199,7 +199,15 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
     // Use ggml-base.bin for faster language detection only
     const baseCandidates = ['ggml-base.bin'];
-    const baseModel = resolveModel('', modelSearchDirs, baseCandidates) || englishModel || multilingualModel;
+    let baseModel = resolveModel('', modelSearchDirs, baseCandidates);
+    
+    if (!baseModel) {
+        // Fallback to transcription models for language detection if base model not available
+        baseModel = multilingualModel || englishModel;
+        if (baseModel) {
+            Logger.WLog(`[whisper-sub] ggml-base.bin not found for language detection, falling back to: ${System.IO.Path.GetFileName(baseModel)}`);
+        }
+    }
 
     const missing = [];
     if (!System.IO.File.Exists(whisperCli))
