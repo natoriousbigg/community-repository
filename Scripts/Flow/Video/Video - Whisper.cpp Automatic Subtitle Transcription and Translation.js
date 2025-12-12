@@ -164,7 +164,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
     // Transcription model candidates - prioritize large-v3-turbo for best quality and speed
     const transcriptionCandidates = [
-        'ggml-large-v3-turbo.bin',
+        'ggml-distil-large-v3.bin',
         'ggml-large-v3.bin',
         'ggml-large.bin',
         'ggml-medium.bin',
