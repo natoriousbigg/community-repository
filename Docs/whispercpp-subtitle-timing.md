@@ -12,7 +12,7 @@ When Whisper.cpp leaves subtitles on screen during silence, tighten its segmenti
 ## Example command
 ```bash
 ./main \
-  -m models/ggml-medium.en.bin -f input.wav -osrt --translate \
+  -m models/ggml-large-v3-turbo.bin -f input.wav -osrt --translate \
   --no-speech-thold 0.6 \
   --split-on-word true --max-len 80 --max-context 0
 ```
