@@ -362,17 +362,17 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         
         // Capture progress from stdout
         executeArgs.add_Output((line) => {
-            var progressMatch = line.match(/progress\s*=\s*(\d+)%/i);
-            if (progressMatch) {
-                Flow.PartPercentageUpdate(parseInt(progressMatch[1]));
+            let matches = line.match(/ ([0-9]+)%/i);
+            if (matches) {
+                Flow.PartPercentageUpdate(matches[1]);
             }
         });
         
         // Also capture from stderr (whisper often outputs progress there)
         executeArgs.add_Error((line) => {
-            var progressMatch = line.match(/progress\s*=\s*(\d+)%/i);
-            if (progressMatch) {
-                Flow.PartPercentageUpdate(parseInt(progressMatch[1]));
+            let matches = line.match(/ ([0-9]+)%/i);
+            if (matches) {
+                Flow.PartPercentageUpdate(matches[1]);
             }
         });
 
@@ -440,18 +440,17 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         
         // Capture progress from stdout
         executeArgs.add_Output((line) => {
-            // Match: "whisper_print_progress_callback: progress = 55%"
-            var progressMatch = line.match(/progress\s*=\s*(\d+)%/i);
-            if (progressMatch) {
-                Flow.PartPercentageUpdate(parseInt(progressMatch[1]));
+            let matches = line.match(/ ([0-9]+)%/i);
+            if (matches) {
+                Flow.PartPercentageUpdate(matches[1]);
             }
         });
         
         // Also capture from stderr (whisper often outputs progress there)
         executeArgs.add_Error((line) => {
-            var progressMatch = line.match(/progress\s*=\s*(\d+)%/i);
-            if (progressMatch) {
-                Flow.PartPercentageUpdate(parseInt(progressMatch[1]));
+            let matches = line.match(/ ([0-9]+)%/i);
+            if (matches) {
+                Flow.PartPercentageUpdate(matches[1]);
             }
         });
 
