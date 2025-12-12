@@ -360,12 +360,12 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         const args = [
             '--model', baseModel,
             '--file', audioPath,
-            '--detect-language', 'true',
+            '--detect-language',
             '--language', 'auto'
         ];
 
         if (disableGpu)
-            args.push('--no-gpu', 'true');
+            args.push('--no-gpu');
 
         const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
         if (process.exitCode !== 0) {
@@ -383,7 +383,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             '--model', modelToUse,
             '--file', audioPath,
             '--language', language || 'auto',
-            '--output-srt', 'true',
+            '--output-srt',
             '--output-file', baseOutput,
             '--temperature', '0.0',
             '--temperature-inc', '0.0',
@@ -392,15 +392,15 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             '--word-thold', '0.01',
             '--no-speech-thold', '0.6',
             '--logprob-thold', '-0.5',
-            '--print-progress', 'true',
-            '--split-on-word', 'true',
+            '--print-progress',
+            '--split-on-word',
             '--max-len', '47',
-            '--suppress-nst', 'true'
+            '--suppress-nst'
         ];
 
         if (vadModelPath) {
             args.push(
-                '--vad', 'true',
+                '--vad',
                 '--vad-model', vadModelPath,
                 '--vad-threshold', '0.5',
                 '--vad-min-speech-duration-ms', '250',
@@ -411,13 +411,13 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         }
 
         if (disableGpu)
-            args.push('--no-gpu', 'true');
+            args.push('--no-gpu');
 
         if (!debugMode)
-            args.push('--no-prints', 'true');
+            args.push('--no-prints');
 
         if (translateFlag)
-            args.push('--translate', 'true');
+            args.push('--translate');
 
         const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
         
