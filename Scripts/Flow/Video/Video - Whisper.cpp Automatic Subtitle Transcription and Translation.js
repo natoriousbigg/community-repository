@@ -647,7 +647,12 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             minWordsPerEntry: 4,          // Changed from 3 - more aggressive fragment merging
             maxMergeGapMs: 2000,          // Max gap for merging fragments (2 seconds)
             maxRepetitiveDurationMs: 3000, // Max duration for repetitive text (3 seconds)
-            maxTimestampGapMs: 1800000    // Max gap before treating as error (30 minutes)
+            repetitiveCheckThresholdMs: 3000, // Min duration to check for repetitive text (3 seconds)
+            maxTimestampGapMs: 1800000,   // Max gap before treating as error (30 minutes)
+            minGapMs: 50,                 // Min gap between entries (50ms)
+            timestampCorrectionGapMs: 100, // Gap to add when correcting timestamp errors (100ms)
+            timestampCorrectionDurationMs: 2000, // Duration to use when correcting malformed timestamps (2 seconds)
+            minLogGapMs: 30000            // Min gap to log for debugging (30 seconds)
         };
         
         const postProcessSrt = (srtPath, settings) => {
@@ -798,7 +803,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     }
 
                     // Detect and compress repetitive/musical text patterns
-                    if (isRepetitiveText(current.text) && duration > 3000) {
+                    if (isRepetitiveText(current.text) && duration > settings.repetitiveCheckThresholdMs) {
                         const reasonableDuration = Math.min(duration, settings.maxRepetitiveDurationMs);
                         current.endMs = current.startMs + reasonableDuration;
                         current.endTime = msToTime(current.endMs);
@@ -814,17 +819,17 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                         if (timeDiff > settings.maxTimestampGapMs) {
                             changeLog.push(`Warning: Large timestamp gap detected at entry ${current.index} (${Math.round(timeDiff/60000)} minutes)`);
                             // Adjust to follow previous entry with a small gap
-                            current.startMs = prev.endMs + 100;
+                            current.startMs = prev.endMs + settings.timestampCorrectionGapMs;
                             current.startTime = msToTime(current.startMs);
                             if (current.endMs <= current.startMs) {
-                                current.endMs = current.startMs + 2000;
+                                current.endMs = current.startMs + settings.timestampCorrectionDurationMs;
                                 current.endTime = msToTime(current.endMs);
                             }
                         }
                         
                         // If start time is before previous end time (overlap), adjust
                         if (current.startMs < prev.endMs) {
-                            current.startMs = prev.endMs + 50;
+                            current.startMs = prev.endMs + settings.minGapMs;
                             current.startTime = msToTime(current.startMs);
                             changeLog.push(`Fixed overlapping timestamp at entry ${current.index}`);
                         }
@@ -836,7 +841,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                         const gapMs = current.startMs - prev.endMs;
                         
                         // Log gaps larger than 30 seconds (may indicate missed audio)
-                        if (gapMs > 30000 && gapMs < settings.maxTimestampGapMs) {
+                        if (gapMs > settings.minLogGapMs && gapMs < settings.maxTimestampGapMs) {
                             changeLog.push(`Note: ${Math.round(gapMs/1000)}s gap before entry ${current.index} (may be music/silence)`);
                         }
                     }
