@@ -373,13 +373,13 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             '--temperature', '0.0',
             '--temperature-inc', '0.0',
             '--max-context', '0',
-            '--entropy-thold', '2.4',
+            '--entropy-thold', '2.2',
             '--word-thold', '0.01',
-            '--no-speech-thold', '0.6',
+            '--no-speech-thold', '0.7',
             '--logprob-thold', '-0.5',
             '--print-progress',
             '--split-on-word',
-            '--max-len', '47',
+            '--max-len', '60',
             '--suppress-nst'
         ];
 
@@ -387,10 +387,10 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             args.push(
                 '--vad',
                 '--vad-model', vadModelPath,
-                '--vad-threshold', '0.5',
-                '--vad-min-speech-duration-ms', '250',
-                '--vad-min-silence-duration-ms', '300',
-                '--vad-speech-pad-ms', '50',
+                '--vad-threshold', '0.55',
+                '--vad-min-speech-duration-ms', '300',
+                '--vad-min-silence-duration-ms', '400',
+                '--vad-speech-pad-ms', '30',
                 '--vad-samples-overlap', '0.1'
             );
         }
@@ -640,7 +640,10 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         // Default post-processing settings
         const postProcessSettings = {
             minDurationMs: 300,
-            maxCharsPerLine: 47,
+            maxDurationMs: 8000,
+            minGapMs: 50,
+            minReadableDurationMs: 1000,
+            maxCharsPerLine: 60,
             shortSegmentThreshold: 3,
             longSegmentThreshold: 10,
             similarityThreshold: 0.85
@@ -767,6 +770,12 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                         continue;
                     }
 
+                    // Fix capitalization issues - detect all-lowercase entries
+                    if (current.text === current.text.toLowerCase() && current.text.length > 10) {
+                        current.text = current.text.replace(/(^|\.\s+)([a-z])/g, (match, p1, p2) => p1 + p2.toUpperCase());
+                        changeLog.push(`Fixed capitalization in entry ${current.index}`);
+                    }
+
                     // Check for internal repetition (hallucination)
                     const lines = current.text.split('\n');
                     if (lines.length > 1) {
@@ -783,6 +792,30 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                             });
                             current.text = dedupedLines.join('\n');
                             changeLog.push(`Fixed internal repetition in entry ${current.index}`);
+                        }
+                    }
+
+                    // Minimum gap enforcement - ensure at least minGapMs between subtitles
+                    if (processed.length > 0) {
+                        const prev = processed[processed.length - 1];
+                        if (current.startMs < prev.endMs + settings.minGapMs) {
+                            prev.endMs = current.startMs - settings.minGapMs;
+                            prev.endTime = msToTime(prev.endMs);
+                            changeLog.push(`Adjusted gap between entries ${prev.index} and ${current.index} to ${settings.minGapMs}ms`);
+                        }
+                    }
+
+                    // Merge very short consecutive entries
+                    if (duration < settings.minReadableDurationMs && processed.length > 0) {
+                        const prev = processed[processed.length - 1];
+                        const timeBetween = current.startMs - prev.endMs;
+                        if (timeBetween < 500) {
+                            // Merge with previous entry
+                            changeLog.push(`Merged short entry ${current.index} (${duration}ms) with previous entry ${prev.index}`);
+                            prev.text = prev.text + ' ' + current.text;
+                            prev.endTime = current.endTime;
+                            prev.endMs = current.endMs;
+                            continue;
                         }
                     }
 
@@ -844,6 +877,36 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                         const splitPoint = current.startMs + Math.floor(duration * words1 / totalWords);
 
                         changeLog.push(`Split long entry ${current.index} (${current.text.length} chars) into two parts`);
+
+                        processed.push({
+                            index: current.index,
+                            startTime: current.startTime,
+                            endTime: msToTime(splitPoint),
+                            startMs: current.startMs,
+                            endMs: splitPoint,
+                            text: part1
+                        });
+
+                        processed.push({
+                            index: current.index + 0.5,
+                            startTime: msToTime(splitPoint),
+                            endTime: current.endTime,
+                            startMs: splitPoint,
+                            endMs: current.endMs,
+                            text: part2
+                        });
+                        continue;
+                    }
+
+                    // Maximum duration check - split entries longer than maxDurationMs
+                    if (duration > settings.maxDurationMs) {
+                        const [part1, part2] = splitTextEvenly(current.text);
+                        const words1 = countWords(part1);
+                        const words2 = countWords(part2);
+                        const totalWords = words1 + words2;
+                        const splitPoint = current.startMs + Math.floor(duration * words1 / totalWords);
+
+                        changeLog.push(`Split entry ${current.index} exceeding max duration (${duration}ms > ${settings.maxDurationMs}ms)`);
 
                         processed.push({
                             index: current.index,
