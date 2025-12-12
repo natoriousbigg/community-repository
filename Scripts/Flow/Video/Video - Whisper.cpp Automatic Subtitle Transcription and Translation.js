@@ -201,7 +201,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
     if (missing.length > 0) {
         Logger.ELog(`[whisper-sub] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
-        const installMsg = "Install the 'Whisper.cpp - Binary and Base Model' DockerMod and 'Whisper.cpp - Large V3 Turbo Model' for best results, or download binary and models manually, and set variable 'whisper' and 'whisper-models'.";
+        const installMsg = "Install the 'Whisper.cpp - Binary and Models' DockerMod for best results, or download binary and models manually, and set variable 'whisper' and 'whisper-models'.";
         Logger.ELog(`[whisper-sub] ${installMsg}`);
         return Flow.Fail('Whisper.cpp and/or required model missing, please install and set variables');
     }
