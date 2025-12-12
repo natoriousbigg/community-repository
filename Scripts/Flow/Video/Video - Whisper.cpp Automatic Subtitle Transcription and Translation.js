@@ -287,6 +287,25 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         const sidecarPath = System.IO.Path.Combine(targetDir, `${baseName}.${normalized}.srt`);
         return System.IO.File.Exists(sidecarPath);
     };
+
+    const deleteExistingSubtitle = (lang) => {
+        const normalized = normalizeLanguage(lang);
+        if (!normalized)
+            return false;
+        const sidecarPath = System.IO.Path.Combine(targetDir, `${baseName}.${normalized}.srt`);
+        if (System.IO.File.Exists(sidecarPath)) {
+            try {
+                System.IO.File.Delete(sidecarPath);
+                Logger.ILog(`[whisper-sub] Deleted existing subtitle: ${sidecarPath}`);
+                existingSubtitleLanguages.delete(normalized);
+                return true;
+            } catch (err) {
+                Logger.WLog(`[whisper-sub] Failed to delete existing subtitle ${sidecarPath}: ${err}`);
+                return false;
+            }
+        }
+        return false;
+    };
     let created = false;
 
     const durationSeconds = vi?.Duration?.TotalSeconds || vi?.VideoStreams?.[0]?.Duration?.TotalSeconds || 0;
@@ -484,7 +503,9 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             continue;
         }
 
-        if (skipExistingSubtitles && hasExistingSubtitle(detected)) {
+        if (overwriteExistingSubtitles) {
+            deleteExistingSubtitle(detected);
+        } else if (hasExistingSubtitle(detected)) {
             Logger.ILog(`[whisper-sub] Skipping track ${i} because subtitles for language '${detected}' already exist.`);
             processedLanguages.add(detected);
             continue;
@@ -516,7 +537,9 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 continue;
             }
 
-            if (skipExistingSubtitles && hasExistingSubtitle(langForName)) {
+            if (overwriteExistingSubtitles) {
+                deleteExistingSubtitle(langForName);
+            } else if (hasExistingSubtitle(langForName)) {
                 Logger.ILog(`[whisper-sub] Skipping creation for track ${i} because subtitles for '${langForName}' already exist.`);
                 if (System.IO.File.Exists(srtPathTemp))
                     System.IO.File.Delete(srtPathTemp);
@@ -550,7 +573,9 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 Logger.ILog(`[whisper-sub] Skipping translation for track ${i} because language is already English.`);
 
                 if (!keepOriginal) {
-                    if (skipExistingSubtitles && hasExistingSubtitle('en')) {
+                    if (overwriteExistingSubtitles) {
+                        deleteExistingSubtitle('en');
+                    } else if (hasExistingSubtitle('en')) {
                         Logger.ILog(`[whisper-sub] Skipping English transcription for track ${i} because an English subtitle already exists.`);
                         processedLanguages.add('en');
                         continue;
@@ -578,7 +603,9 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 continue;
             }
 
-            if (skipExistingSubtitles && hasExistingSubtitle('en')) {
+            if (overwriteExistingSubtitles) {
+                deleteExistingSubtitle('en');
+            } else if (hasExistingSubtitle('en')) {
                 Logger.ILog(`[whisper-sub] Skipping English translation for track ${i} because an English subtitle already exists.`);
                 continue;
             }
