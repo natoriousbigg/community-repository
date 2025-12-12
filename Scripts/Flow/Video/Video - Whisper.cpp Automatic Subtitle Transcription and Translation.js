@@ -379,7 +379,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             '--output-file', baseOutput,
             '--temperature', '0.0',
             '--temperature-inc', '0.0',
-            '--max-context', '0',
+            '--max-context', '10',
             '--entropy-thold', '2.2',
             '--word-thold', '0.5',
             '--no-speech-thold', '0.8',
@@ -397,7 +397,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 '--vad-threshold', '0.6',
                 '--vad-min-speech-duration-ms', '250',
                 '--vad-min-silence-duration-ms', '300',
-                '--vad-speech-pad-ms', '50',
+                '--vad-speech-pad-ms', '47',
                 '--vad-samples-overlap', '0.1',
                 '--vad-max-speech-duration-s', '8'
             );
