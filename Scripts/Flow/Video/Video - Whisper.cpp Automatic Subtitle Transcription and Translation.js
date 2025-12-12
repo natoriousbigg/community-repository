@@ -412,22 +412,18 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         executeArgs.command = whisperCli;
         executeArgs.argumentList = args;
         
-        // Capture progress from stdout
-        executeArgs.add_Output((line) => {
+        // Helper function to parse and update progress
+        const handleProgressLine = (line) => {
             // Match: "whisper_print_progress_callback: progress = 55%"
             let matches = line.match(/progress\s*=\s*(\d+)%/i);
             if (matches) {
                 Flow.PartPercentageUpdate(parseInt(matches[1]));
             }
-        });
+        };
         
-        // Also capture from stderr (whisper often outputs progress there)
-        executeArgs.add_Error((line) => {
-            let matches = line.match(/progress\s*=\s*(\d+)%/i);
-            if (matches) {
-                Flow.PartPercentageUpdate(parseInt(matches[1]));
-            }
-        });
+        // Capture progress from both stdout and stderr (whisper may output to either)
+        executeArgs.add_Output(handleProgressLine);
+        executeArgs.add_Error(handleProgressLine);
 
         const process = Flow.Execute(executeArgs);
         
