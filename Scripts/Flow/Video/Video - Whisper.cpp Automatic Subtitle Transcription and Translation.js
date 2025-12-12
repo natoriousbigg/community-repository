@@ -400,9 +400,9 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
         const process = Flow.Execute({ command: whisperCli, argumentList: args, logOutput: false });
         
-        // Check for errors including unknown parameters
+        // Check for actual errors
         const combinedOutput = [process.output, process.standardOutput, process.standardError].filter(Boolean).join('\n');
-        if (process.exitCode !== 0 || combinedOutput.includes('unknown argument') || combinedOutput.match(/^error:/im)) {
+        if (process.exitCode !== 0 || combinedOutput.match(/^error:/im)) {
             Logger.ELog(`[whisper-sub] whisper-cli failed: ${combinedOutput}`);
             return { ...process, hasFailed: true };
         }
