@@ -801,16 +801,18 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 }
 
                 // Sort entries by start time to ensure chronological order
-                const originalOrder = entries.map((e, idx) => ({ index: e.index, position: idx }));
+                // Track original indices to detect reordering
+                const originalIndices = entries.map(e => e.index);
                 entries.sort((a, b) => a.startMs - b.startMs);
                 
-                // Re-index entries after sorting
+                // Re-index entries after sorting and count changes
                 let reorderedCount = 0;
                 entries.forEach((entry, idx) => {
-                    if (entry.index !== idx + 1) {
+                    const newIndex = idx + 1;
+                    if (entry.index !== originalIndices[idx]) {
                         reorderedCount++;
                     }
-                    entry.index = idx + 1;
+                    entry.index = newIndex;
                 });
 
                 let changeLog = [];
