@@ -1199,7 +1199,8 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     
                     // If current entry starts before previous entry ends, fix it
                     if (current.startMs < prev.endMs) {
-                        current.startMs = prev.endMs + settings.minGapMs;
+                        const minGap = settings.minGapMs;
+                        current.startMs = prev.endMs + minGap;
                         current.startTime = msToTime(current.startMs);
                         
                         // Ensure end time is after start time
@@ -1212,14 +1213,16 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                                 const next = processed[i + 1];
                                 if (current.endMs > next.startMs) {
                                     // Cap current end time to not overlap with next entry
-                                    const cappedEndMs = next.startMs - settings.minGapMs;
-                                    // Only cap if it still results in a valid duration
-                                    if (cappedEndMs > current.startMs) {
+                                    const cappedEndMs = next.startMs - minGap;
+                                    // Only cap if it still results in a positive or zero duration
+                                    // Zero-duration entries are acceptable for instantaneous captions in some subtitle formats
+                                    if (cappedEndMs >= current.startMs) {
                                         current.endMs = cappedEndMs;
                                         current.endTime = msToTime(current.endMs);
                                     } else {
-                                        // Entry is squeezed between prev and next, use minimal duration
-                                        current.endMs = current.startMs + settings.minGapMs;
+                                        // Entry is squeezed between prev and next with no room
+                                        // Use minGap as duration - the maximum we can fit without overlapping
+                                        current.endMs = current.startMs + minGap;
                                         current.endTime = msToTime(current.endMs);
                                     }
                                 }
