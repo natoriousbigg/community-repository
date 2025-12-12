@@ -643,7 +643,11 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             maxCharsPerLine: 47,
             shortSegmentThreshold: 3,
             longSegmentThreshold: 10,
-            similarityThreshold: 0.85
+            similarityThreshold: 0.85,
+            minWordsPerEntry: 4,          // Changed from 3 - more aggressive fragment merging
+            maxMergeGapMs: 2000,          // Max gap for merging fragments (2 seconds)
+            maxRepetitiveDurationMs: 3000, // Max duration for repetitive text (3 seconds)
+            maxTimestampGapMs: 1800000    // Max gap before treating as error (30 minutes)
         };
         
         const postProcessSrt = (srtPath, settings) => {
@@ -702,6 +706,19 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                         words.slice(0, mid).join(' '),
                         words.slice(mid).join(' ')
                     ];
+                };
+
+                // Helper: Detect repetitive/musical text patterns
+                const isRepetitiveText = (text) => {
+                    const normalized = text.toLowerCase().replace(/[^\w\s]/g, '');
+                    const words = normalized.split(/\s+/).filter(w => w.length > 0);
+                    if (words.length < 3) return false;
+                    
+                    // Check if most words are the same (e.g., "doo doo doo doo")
+                    const wordCounts = {};
+                    words.forEach(w => { wordCounts[w] = (wordCounts[w] || 0) + 1; });
+                    const maxCount = Math.max(...Object.values(wordCounts));
+                    return maxCount >= words.length * 0.6; // 60% same word = repetitive
                 };
 
                 // Read and parse SRT file
@@ -765,6 +782,63 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     if (duration < settings.minDurationMs) {
                         changeLog.push(`Removed entry ${current.index}: duration ${duration}ms < ${settings.minDurationMs}ms`);
                         continue;
+                    }
+
+                    // More aggressive fragment merging: merge entries with fewer than 4 words if within 2 seconds of previous
+                    if (countWords(current.text) < settings.minWordsPerEntry && processed.length > 0) {
+                        const prev = processed[processed.length - 1];
+                        const timeBetween = current.startMs - prev.endMs;
+                        if (timeBetween < settings.maxMergeGapMs) {
+                            prev.text = prev.text + ' ' + current.text;
+                            prev.endMs = current.endMs;
+                            prev.endTime = current.endTime;
+                            changeLog.push(`Merged short fragment "${current.text}" into previous entry`);
+                            continue;
+                        }
+                    }
+
+                    // Detect and compress repetitive/musical text patterns
+                    if (isRepetitiveText(current.text) && duration > 3000) {
+                        const reasonableDuration = Math.min(duration, settings.maxRepetitiveDurationMs);
+                        current.endMs = current.startMs + reasonableDuration;
+                        current.endTime = msToTime(current.endMs);
+                        changeLog.push(`Compressed repetitive text entry ${current.index} from ${duration}ms to ${reasonableDuration}ms`);
+                    }
+
+                    // Validate timestamp sequence (catch hour-wrap errors)
+                    if (processed.length > 0) {
+                        const prev = processed[processed.length - 1];
+                        const timeDiff = current.startMs - prev.endMs;
+                        
+                        // If there's a massive jump (> 30 minutes), it's likely an error
+                        if (timeDiff > settings.maxTimestampGapMs) {
+                            changeLog.push(`Warning: Large timestamp gap detected at entry ${current.index} (${Math.round(timeDiff/60000)} minutes)`);
+                            // Adjust to follow previous entry with a small gap
+                            current.startMs = prev.endMs + 100;
+                            current.startTime = msToTime(current.startMs);
+                            if (current.endMs <= current.startMs) {
+                                current.endMs = current.startMs + 2000;
+                                current.endTime = msToTime(current.endMs);
+                            }
+                        }
+                        
+                        // If start time is before previous end time (overlap), adjust
+                        if (current.startMs < prev.endMs) {
+                            current.startMs = prev.endMs + 50;
+                            current.startTime = msToTime(current.startMs);
+                            changeLog.push(`Fixed overlapping timestamp at entry ${current.index}`);
+                        }
+                    }
+
+                    // Log large gaps for debugging (but don't modify - these may be intentional silence)
+                    if (processed.length > 0) {
+                        const prev = processed[processed.length - 1];
+                        const gapMs = current.startMs - prev.endMs;
+                        
+                        // Log gaps larger than 30 seconds (may indicate missed audio)
+                        if (gapMs > 30000 && gapMs < settings.maxTimestampGapMs) {
+                            changeLog.push(`Note: ${Math.round(gapMs/1000)}s gap before entry ${current.index} (may be music/silence)`);
+                        }
                     }
 
                     // Check for internal repetition (hallucination)
