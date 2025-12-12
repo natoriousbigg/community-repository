@@ -805,14 +805,17 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 const originalIndices = entries.map(e => e.index);
                 entries.sort((a, b) => a.startMs - b.startMs);
                 
-                // Re-index entries after sorting and count changes
+                // Count how many entries changed position (before re-indexing)
                 let reorderedCount = 0;
                 entries.forEach((entry, idx) => {
-                    const newIndex = idx + 1;
                     if (entry.index !== originalIndices[idx]) {
                         reorderedCount++;
                     }
-                    entry.index = newIndex;
+                });
+                
+                // Re-index entries after sorting
+                entries.forEach((entry, idx) => {
+                    entry.index = idx + 1;
                 });
 
                 let changeLog = [];
