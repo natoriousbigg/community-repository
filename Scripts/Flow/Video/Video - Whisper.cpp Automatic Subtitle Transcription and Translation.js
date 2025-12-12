@@ -362,17 +362,17 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         
         // Capture progress from stdout
         executeArgs.add_Output((line) => {
-            let matches = line.match(/progress\s*=\s*(\d+)%/i);
-            if (matches) {
-                Flow.PartPercentageUpdate(parseInt(matches[1]));
+            var progressMatch = line.match(/progress\s*=\s*(\d+)%/i);
+            if (progressMatch) {
+                Flow.PartPercentageUpdate(parseInt(progressMatch[1]));
             }
         });
         
         // Also capture from stderr (whisper often outputs progress there)
         executeArgs.add_Error((line) => {
-            let matches = line.match(/progress\s*=\s*(\d+)%/i);
-            if (matches) {
-                Flow.PartPercentageUpdate(parseInt(matches[1]));
+            var progressMatch = line.match(/progress\s*=\s*(\d+)%/i);
+            if (progressMatch) {
+                Flow.PartPercentageUpdate(parseInt(progressMatch[1]));
             }
         });
 
@@ -441,17 +441,17 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         // Capture progress from stdout
         executeArgs.add_Output((line) => {
             // Match: "whisper_print_progress_callback: progress = 55%"
-            let matches = line.match(/progress\s*=\s*(\d+)%/i);
-            if (matches) {
-                Flow.PartPercentageUpdate(parseInt(matches[1]));
+            var progressMatch = line.match(/progress\s*=\s*(\d+)%/i);
+            if (progressMatch) {
+                Flow.PartPercentageUpdate(parseInt(progressMatch[1]));
             }
         });
         
         // Also capture from stderr (whisper often outputs progress there)
         executeArgs.add_Error((line) => {
-            let matches = line.match(/progress\s*=\s*(\d+)%/i);
-            if (matches) {
-                Flow.PartPercentageUpdate(parseInt(matches[1]));
+            var progressMatch = line.match(/progress\s*=\s*(\d+)%/i);
+            if (progressMatch) {
+                Flow.PartPercentageUpdate(parseInt(progressMatch[1]));
             }
         });
 
