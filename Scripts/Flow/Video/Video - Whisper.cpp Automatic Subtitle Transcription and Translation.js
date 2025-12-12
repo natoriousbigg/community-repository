@@ -1199,13 +1199,12 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     
                     // If current entry starts before previous entry ends, fix it
                     if (current.startMs < prev.endMs) {
-                        const gap = settings.minGapMs || 50;
-                        current.startMs = prev.endMs + gap;
+                        current.startMs = prev.endMs + settings.minGapMs;
                         current.startTime = msToTime(current.startMs);
                         
                         // Ensure end time is after start time
                         if (current.endMs < current.startMs) {
-                            current.endMs = current.startMs + (settings.timestampCorrectionDurationMs || 2000);
+                            current.endMs = current.startMs + settings.timestampCorrectionDurationMs;
                             current.endTime = msToTime(current.endMs);
                             
                             // If there's a next entry, ensure we don't overlap with it
@@ -1213,14 +1212,14 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                                 const next = processed[i + 1];
                                 if (current.endMs > next.startMs) {
                                     // Cap current end time to not overlap with next entry
-                                    const cappedEndMs = next.startMs - gap;
+                                    const cappedEndMs = next.startMs - settings.minGapMs;
                                     // Only cap if it still results in a valid duration
                                     if (cappedEndMs > current.startMs) {
                                         current.endMs = cappedEndMs;
                                         current.endTime = msToTime(current.endMs);
                                     } else {
                                         // Entry is squeezed between prev and next, use minimal duration
-                                        current.endMs = current.startMs + gap;
+                                        current.endMs = current.startMs + settings.minGapMs;
                                         current.endTime = msToTime(current.endMs);
                                     }
                                 }
