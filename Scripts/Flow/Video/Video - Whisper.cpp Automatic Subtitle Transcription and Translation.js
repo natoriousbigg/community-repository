@@ -801,16 +801,19 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 }
 
                 // Sort entries by start time to ensure chronological order
-                // Track original indices to detect reordering
-                const originalIndices = entries.map(e => e.index);
+                // Track original position of each entry to detect reordering
+                entries.forEach((entry, idx) => {
+                    entry.originalPosition = idx;
+                });
                 entries.sort((a, b) => a.startMs - b.startMs);
                 
-                // Count how many entries changed position (before re-indexing)
+                // Count how many entries changed position after sorting
                 let reorderedCount = 0;
                 entries.forEach((entry, idx) => {
-                    if (entry.index !== originalIndices[idx]) {
+                    if (entry.originalPosition !== idx) {
                         reorderedCount++;
                     }
+                    delete entry.originalPosition; // Clean up temporary property
                 });
                 
                 // Re-index entries after sorting
