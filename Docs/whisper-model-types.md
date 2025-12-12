@@ -1,8 +1,20 @@
-# Whisper model variants (.bin vs .en.bin)
+# Whisper model usage
 
-Whisper.cpp distributes two families of ggml model files:
+## Unified Model Approach
 
-- **Multilingual models (`*.bin`)**: support recognition and translation for ~99 languages. They are trained on the full Whisper dataset, so they can detect many languages and transcribe in-language or translate to English. File names end in just the size (for example `ggml-base.bin`, `ggml-medium.bin`).
-- **English-only models (`*.en.bin`)**: fine-tuned strictly for English. Because they only contain English tokens, they run faster, use less memory, and often give slightly higher accuracy on English audio, but they cannot transcribe other languages. File names include `.en.bin` (for example `ggml-base.en.bin`, `ggml-medium.en.bin`).
+The transcription scripts now use a unified model approach for simplicity and optimal quality:
 
-In practice, use a multilingual `*.bin` model when you need automatic language detection or non-English transcripts. For translating other languages into English, the multilingual models are also the right choice—they understand the source language and can emit English translations directly. Choose an `*.en.bin` model when you only expect English and want a lighter or faster model with optimized English quality.
+- **ggml-large-v3-turbo.bin**: The recommended model for all transcription tasks. It provides the best balance of speed, quality, and multilingual support (~99 languages). This model is used for both English and non-English audio, as well as translations.
+- **ggml-base.bin**: Used exclusively for fast language detection before transcription. This smaller model quickly identifies the audio language without the overhead of the larger transcription models.
+
+## Why This Approach?
+
+Previous versions distinguished between English-only models (`*.en.bin`) and multilingual models (`*.bin`). The unified approach simplifies configuration and maintenance while leveraging the ggml-large-v3-turbo model's superior performance across all languages, including English.
+
+## Model Recommendations
+
+For best results:
+1. Install the **Whisper.cpp - Binary and Base Model** DockerMod (provides the binary and ggml-base.bin for language detection)
+2. Install the **Whisper.cpp - Large V3 Turbo Model** DockerMod (provides ggml-large-v3-turbo.bin for transcription)
+
+Alternative models (ggml-large-v3.bin, ggml-medium.bin) are also supported but may be slower or lower quality than ggml-large-v3-turbo.bin.

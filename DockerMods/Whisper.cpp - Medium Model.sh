@@ -1,9 +1,9 @@
 # ----------------------------------------------------------------------------------------------------
 # Name: Whisper.cpp - Medium Model
-# Description: Downloads the ggml-medium Whisper.cpp multilingual and English models into
-#              /app/common/whispercpp/models.
+# Description: Downloads the ggml-medium Whisper.cpp multilingual model into /app/common/whispercpp/models.
+#              Note: This model can be used for transcription, but ggml-large-v3-turbo is recommended for better quality and speed.
 # Author: OpenAI-Assistant
-# Revision: 8
+# Revision: 9
 # Icon: https://meta-l.cdn.bubble.io/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -16,13 +16,11 @@ log() {
 
 MODEL_DIR="/app/common/whispercpp/models"
 MODEL_FILE="${MODEL_DIR}/ggml-medium.bin"
-MODEL_EN_FILE="${MODEL_DIR}/ggml-medium.en.bin"
 MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin"
-MODEL_EN_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin"
 
 if [[ "${1:-}" == "--uninstall" ]]; then
-    log "Uninstall flag detected. Removing models from ${MODEL_DIR}."
-    rm -f "${MODEL_FILE}" "${MODEL_EN_FILE}" || true
+    log "Uninstall flag detected. Removing model from ${MODEL_DIR}."
+    rm -f "${MODEL_FILE}" || true
     rmdir --ignore-fail-on-non-empty "${MODEL_DIR}" 2>/dev/null || true
     exit 0
 fi
@@ -43,12 +41,5 @@ else
     curl -L --fail "${MODEL_URL}" -o "${MODEL_FILE}"
 fi
 
-if [[ -f "${MODEL_EN_FILE}" ]]; then
-    log "English model already present at ${MODEL_EN_FILE}; skipping download."
-else
-    log "Downloading ggml-medium Whisper.cpp English model from Hugging Face."
-    curl -L --fail "${MODEL_EN_URL}" -o "${MODEL_EN_FILE}"
-fi
-
-log "Download complete. Models available in ${MODEL_DIR}."
+log "Download complete. Model available in ${MODEL_DIR}."
 exit 0

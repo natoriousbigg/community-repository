@@ -1,9 +1,9 @@
 /**
  * @name Video - Whisper.cpp Automatic Subtitle Transcription and Translation
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
- * @description Transcribes each audio track with whisper-cli into language-tagged SRT files, with optional translation and flexible subtitle placement.
+ * @description Transcribes each audio track with whisper-cli into language-tagged SRT files using ggml-large-v3-turbo for all languages, with optional translation, flexible subtitle placement, and integrated post-processing.
  * @author OpenAI-Assistant
- * @revision 48
+ * @revision 49
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English.
@@ -14,8 +14,9 @@
  * @param {bool} FixAudioLanguages Update audio track language tags using detected languages before transcription.
  * @param {('OrgDir'|'WorkingDir')} SubtitleSaveDir Directory to save subtitles to. OrgDir - Original Directory. WorkingDir - Fileflows working directory.
  * @param {bool} DisableVAD Disable Voice Activity Detection (VAD) even if the model is available.
+ * @param {bool} DisableSubtitlePostProcessing Disable automatic post-processing of generated subtitles (removes duplicates, fixes hallucinations, rebalances sentence splits).
  */
-function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubtitles = false, DebugMode, NoGpu, FixAudioLanguages, SubtitleSaveDir, DisableVAD) {
+function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubtitles = false, DebugMode, NoGpu, FixAudioLanguages, SubtitleSaveDir, DisableVAD, DisableSubtitlePostProcessing) {
     const vi = Variables.vi?.VideoInfo;
     const filePath = Variables.file?.FullName;
 
@@ -51,6 +52,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
     const disableGpu = parseBoolean(typeof Variables['NoGpu'] !== 'undefined' ? Variables['NoGpu'] : NoGpu, false);
     const fixAudioLanguages = parseBoolean(typeof Variables['FixAudioLanguages'] !== 'undefined' ? Variables['FixAudioLanguages'] : FixAudioLanguages, false);
     const disableVAD = parseBoolean(typeof Variables['DisableVAD'] !== 'undefined' ? Variables['DisableVAD'] : DisableVAD, false);
+    const disableSubtitlePostProcessing = parseBoolean(typeof Variables['DisableSubtitlePostProcessing'] !== 'undefined' ? Variables['DisableSubtitlePostProcessing'] : DisableSubtitlePostProcessing, false);
 
     if (!keepOriginal && !translateToEnglish) {
         Logger.ELog('[whisper-sub] Whisper.cpp Aborted - Neither original Language or English translation were selected.');
@@ -160,19 +162,13 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         modelSearchDirs.push(modelOverride);
     modelSearchDirs.push(modelDir);
 
-    const multilingualCandidates = [
+    // Transcription model candidates - prioritize large-v3-turbo for best quality and speed
+    const transcriptionCandidates = [
         'ggml-large-v3-turbo.bin',
         'ggml-large-v3.bin',
         'ggml-large.bin',
         'ggml-medium.bin',
         'ggml-base.bin'
-    ];
-    const englishCandidates = [
-        'ggml-large-v3-turbo.bin',
-        'ggml-large-v3.bin',
-        'ggml-large.bin',
-        'ggml-medium.en.bin',
-        'ggml-base.en.bin'
     ];
 
     const resolveModel = (explicitPath, fallbackDirs, candidates) => {
@@ -188,38 +184,27 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         return pickPreferredModel(fallbackDirs, candidates);
     };
 
-    // If override is a .bin file, use it as multilingual model
-    const multilingualModel = overrideIsFile
+    // If override is a .bin file, use it as the transcription model
+    const transcriptionModel = overrideIsFile
         ? modelOverride
-        : resolveModel('', modelSearchDirs, multilingualCandidates);
+        : resolveModel('', modelSearchDirs, transcriptionCandidates);
 
-    // Always try to find dedicated English models (ggml-medium.en.bin preferred over ggml-base.en.bin)
-    let englishModel = resolveModel('', modelSearchDirs, englishCandidates);
-    let hasDedicatedEnglish = englishModel && System.IO.File.Exists(englishModel);
-    // Fall back to the override file or multilingual model if no dedicated English model found
-    if (!hasDedicatedEnglish) {
-        englishModel = overrideIsFile ? modelOverride : multilingualModel;
-    }
-
-    // Use ggml-base.bin for faster language detection
+    // Use ggml-base.bin for faster language detection only
     const baseCandidates = ['ggml-base.bin'];
-    const baseModel = resolveModel('', modelSearchDirs, baseCandidates) || multilingualModel;
+    const baseModel = resolveModel('', modelSearchDirs, baseCandidates) || transcriptionModel;
 
     const missing = [];
     if (!System.IO.File.Exists(whisperCli))
         missing.push(`binary at '${whisperCli}'`);
-    if (!multilingualModel)
-        missing.push('multilingual Whisper.cpp model (e.g., ggml-large-v3-turbo.bin, ggml-medium.bin or ggml-base.bin)');
+    if (!transcriptionModel)
+        missing.push('Whisper.cpp transcription model (ggml-large-v3-turbo.bin recommended, or ggml-large-v3.bin, ggml-medium.bin, ggml-base.bin)');
 
     if (missing.length > 0) {
         Logger.ELog(`[whisper-sub] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
-        const installMsg = "Install the 'Whisper.cpp - Binary and Base Model' DockerMod for the binary and base model, or download binary and models manually, and set variable 'whisper' and 'whisper-models'.";
+        const installMsg = "Install the 'Whisper.cpp - Binary and Base Model' DockerMod and 'Whisper.cpp - Large V3 Turbo Model' for best results, or download binary and models manually, and set variable 'whisper' and 'whisper-models'.";
         Logger.ELog(`[whisper-sub] ${installMsg}`);
         return Flow.Fail('Whisper.cpp and/or required model missing, please install and set variables');
     }
-
-    if (!hasDedicatedEnglish)
-        Logger.WLog('[whisper-sub] English Whisper.cpp model not found; using multilingual model for English audio.');
 
     // VAD model detection
     let vadModelPath = '';
@@ -515,9 +500,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
         if (keepOriginal) {
             const tempBase = System.IO.Path.Combine(workingDir, `whisper_sub_track_${i}`);
-            const assumedLanguage = normalizeLanguage(detectedFromAudio || langMeta);
-            const transcriptModel = assumedLanguage === 'en' ? englishModel : multilingualModel;
-            const process = runWhisper(audioSample, tempBase, detected || 'auto', false, transcriptModel);
+            const process = runWhisper(audioSample, tempBase, detected || 'auto', false, transcriptionModel);
 
             if (process.exitCode !== 0 || process.hasFailed) {
                 Logger.WLog(`[whisper-sub] whisper-cli failed for track ${i}: ${process.output}`);
@@ -584,7 +567,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     }
 
                     const englishBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
-                    const englishProcess = runWhisper(audioSample, englishBase, 'en', false, englishModel);
+                    const englishProcess = runWhisper(audioSample, englishBase, 'en', false, transcriptionModel);
                     if (englishProcess.exitCode !== 0 || englishProcess.hasFailed) {
                         Logger.WLog(`[whisper-sub] English transcription failed for track ${i}: ${englishProcess.output}`);
                         return Flow.Fail('Whisper failed: English transcription process returned error');
@@ -612,7 +595,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 continue;
             }
             const translateBase = System.IO.Path.Combine(targetDir, `${baseName}.en`);
-            const translateProcess = runWhisper(audioSample, translateBase, sourceLang, true, multilingualModel);
+            const translateProcess = runWhisper(audioSample, translateBase, sourceLang, true, transcriptionModel);
             if (translateProcess.exitCode !== 0 || translateProcess.hasFailed) {
                 Logger.WLog(`[whisper-sub] Translation to English failed for track ${i}: ${translateProcess.output}`);
                 return Flow.Fail('Whisper failed: Translation to English process returned error');
@@ -648,6 +631,290 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
     if (createdSubtitles.length > 0) {
         Variables.CreatedSubtitlePaths = createdSubtitles.join('|');
         Logger.ILog(`[whisper-sub] Stored ${createdSubtitles.length} subtitle path(s) for post-processing`);
+    }
+
+    // Integrated subtitle post-processing
+    if (!disableSubtitlePostProcessing && createdSubtitles.length > 0) {
+        Logger.ILog('[whisper-sub] Starting integrated subtitle post-processing...');
+        
+        // Default post-processing settings
+        const postProcessSettings = {
+            minDurationMs: 500,
+            maxCharsPerLine: 47,
+            shortSegmentThreshold: 3,
+            longSegmentThreshold: 10,
+            similarityThreshold: 0.85
+        };
+        
+        const postProcessSrt = (srtPath, settings) => {
+            try {
+                if (!System.IO.File.Exists(srtPath)) {
+                    Logger.WLog(`[whisper-sub] Post-processing skipped: file not found at ${srtPath}`);
+                    return false;
+                }
+
+                Logger.ILog(`[whisper-sub] Post-processing: ${srtPath}`);
+
+                // Helper: Convert time to milliseconds
+                const timeToMs = (timeStr) => {
+                    const match = timeStr.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3})/);
+                    if (!match) return 0;
+                    const [, h, m, s, ms] = match;
+                    return parseInt(h) * 3600000 + parseInt(m) * 60000 + parseInt(s) * 1000 + parseInt(ms);
+                };
+
+                // Helper: Convert milliseconds to time string
+                const msToTime = (ms) => {
+                    const hours = Math.floor(ms / 3600000);
+                    const minutes = Math.floor((ms % 3600000) / 60000);
+                    const seconds = Math.floor((ms % 60000) / 1000);
+                    const milliseconds = ms % 1000;
+                    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
+                };
+
+                // Helper: Normalize text for comparison
+                const normalizeText = (text) => {
+                    return text.toLowerCase()
+                        .replace(/[^\w\s]/g, '')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                };
+
+                // Helper: Calculate text similarity (Jaccard similarity)
+                const calculateSimilarity = (text1, text2) => {
+                    const words1 = new Set(normalizeText(text1).split(' '));
+                    const words2 = new Set(normalizeText(text2).split(' '));
+                    const intersection = new Set([...words1].filter(x => words2.has(x)));
+                    const union = new Set([...words1, ...words2]);
+                    return union.size > 0 ? intersection.size / union.size : 0;
+                };
+
+                // Helper: Count words in text
+                const countWords = (text) => {
+                    return text.trim().split(/\s+/).filter(w => w.length > 0).length;
+                };
+
+                // Helper: Split text into two balanced parts
+                const splitTextEvenly = (text) => {
+                    const words = text.trim().split(/\s+/);
+                    const mid = Math.ceil(words.length / 2);
+                    return [
+                        words.slice(0, mid).join(' '),
+                        words.slice(mid).join(' ')
+                    ];
+                };
+
+                // Read and parse SRT file
+                let content;
+                try {
+                    content = System.IO.File.ReadAllText(srtPath);
+                } catch (readErr) {
+                    Logger.ELog(`[whisper-sub] Post-processing: Failed to read file: ${readErr}`);
+                    return false;
+                }
+
+                if (!content || content.trim().length === 0) {
+                    Logger.WLog(`[whisper-sub] Post-processing: File is empty, skipping`);
+                    return false;
+                }
+
+                const entries = [];
+                const blocks = content.split(/\n\s*\n/).filter(block => block.trim());
+
+                for (const block of blocks) {
+                    const lines = block.split('\n').map(l => l.trim()).filter(l => l);
+                    if (lines.length < 3) continue;
+
+                    const index = parseInt(lines[0]);
+                    const timeLine = lines[1];
+                    const text = lines.slice(2).join('\n');
+
+                    const match = timeLine.match(/(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})/);
+                    if (!match) continue;
+
+                    entries.push({
+                        index,
+                        startTime: match[1],
+                        endTime: match[2],
+                        startMs: timeToMs(match[1]),
+                        endMs: timeToMs(match[2]),
+                        text,
+                        originalText: text
+                    });
+                }
+
+                if (entries.length === 0) {
+                    Logger.WLog(`[whisper-sub] Post-processing: No valid entries found in ${srtPath}`);
+                    return false;
+                }
+
+                let changeLog = [];
+                const processed = [];
+
+                // Process entries
+                for (let i = 0; i < entries.length; i++) {
+                    const current = entries[i];
+                    
+                    if (!current || !current.text) {
+                        continue;
+                    }
+                    
+                    const duration = current.endMs - current.startMs;
+
+                    // Skip very short duration entries
+                    if (duration < settings.minDurationMs) {
+                        changeLog.push(`Removed entry ${current.index}: duration ${duration}ms < ${settings.minDurationMs}ms`);
+                        continue;
+                    }
+
+                    // Check for internal repetition (hallucination)
+                    const lines = current.text.split('\n');
+                    if (lines.length > 1) {
+                        const normalizedLines = lines.map(l => normalizeText(l));
+                        const uniqueNormalizedLines = [...new Set(normalizedLines)];
+                        if (uniqueNormalizedLines.length < normalizedLines.length) {
+                            // Keep first occurrence of each unique normalized line
+                            const seen = new Set();
+                            const dedupedLines = lines.filter((line, idx) => {
+                                const normalized = normalizedLines[idx];
+                                if (seen.has(normalized)) return false;
+                                seen.add(normalized);
+                                return true;
+                            });
+                            current.text = dedupedLines.join('\n');
+                            changeLog.push(`Fixed internal repetition in entry ${current.index}`);
+                        }
+                    }
+
+                    // Check for duplicate with previous entry
+                    if (processed.length > 0) {
+                        const prev = processed[processed.length - 1];
+                        const similarity = calculateSimilarity(prev.text, current.text);
+
+                        if (similarity >= settings.similarityThreshold) {
+                            // Merge entries
+                            changeLog.push(`Merged duplicate entries ${prev.index} and ${current.index} (similarity: ${similarity.toFixed(2)})`);
+                            prev.endTime = current.endTime;
+                            prev.endMs = current.endMs;
+                            continue;
+                        }
+                    }
+
+                    // Check for uneven sentence splits (long followed by short)
+                    if (processed.length > 0) {
+                        const prev = processed[processed.length - 1];
+                        const prevWords = countWords(prev.text);
+                        const currentWords = countWords(current.text);
+                        const timeBetween = current.startMs - prev.endMs;
+
+                        // Only rebalance if entries are close together (< 2 seconds gap)
+                        if (prevWords >= settings.longSegmentThreshold && 
+                            currentWords <= settings.shortSegmentThreshold && 
+                            timeBetween < 2000) {
+                            // Merge and re-split evenly (joins entries with space since they're separate segments)
+                            const combinedText = prev.text + ' ' + current.text;
+                            const combinedWords = countWords(combinedText);
+                            
+                            if (combinedWords > settings.shortSegmentThreshold) {
+                                const [part1, part2] = splitTextEvenly(combinedText);
+                                const words1 = countWords(part1);
+                                const words2 = countWords(part2);
+                                const totalDuration = current.endMs - prev.startMs;
+                                const splitPoint = prev.startMs + Math.floor(totalDuration * words1 / combinedWords);
+
+                                changeLog.push(`Rebalanced entries ${prev.index} and ${current.index} (${prevWords}w + ${currentWords}w → ${words1}w + ${words2}w)`);
+                                prev.text = part1;
+                                prev.endTime = msToTime(splitPoint);
+                                prev.endMs = splitPoint;
+                                current.text = part2;
+                                current.startTime = msToTime(splitPoint);
+                                current.startMs = splitPoint;
+                            }
+                        }
+                    }
+
+                    // Split overly long entries
+                    const maxLength = settings.maxCharsPerLine * 2;
+                    if (current.text.length > maxLength && !current.text.includes('\n')) {
+                        const [part1, part2] = splitTextEvenly(current.text);
+                        const words1 = countWords(part1);
+                        const words2 = countWords(part2);
+                        const totalWords = words1 + words2;
+                        const duration = current.endMs - current.startMs;
+                        const splitPoint = current.startMs + Math.floor(duration * words1 / totalWords);
+
+                        changeLog.push(`Split long entry ${current.index} (${current.text.length} chars) into two parts`);
+
+                        processed.push({
+                            index: current.index,
+                            startTime: current.startTime,
+                            endTime: msToTime(splitPoint),
+                            startMs: current.startMs,
+                            endMs: splitPoint,
+                            text: part1
+                        });
+
+                        processed.push({
+                            index: current.index + 0.5,
+                            startTime: msToTime(splitPoint),
+                            endTime: current.endTime,
+                            startMs: splitPoint,
+                            endMs: current.endMs,
+                            text: part2
+                        });
+                        continue;
+                    }
+
+                    processed.push(current);
+                }
+
+                // Log changes
+                if (changeLog.length > 0) {
+                    Logger.ILog(`[whisper-sub] Post-processing changes for ${System.IO.Path.GetFileName(srtPath)}:`);
+                    for (const log of changeLog) {
+                        Logger.ILog(`  - ${log}`);
+                    }
+                } else {
+                    Logger.ILog(`[whisper-sub] No post-processing changes needed for ${System.IO.Path.GetFileName(srtPath)}`);
+                }
+
+                // Write back to file
+                const output = processed.map((entry, idx) => {
+                    return `${idx + 1}\n${entry.startTime} --> ${entry.endTime}\n${entry.text}\n`;
+                }).join('\n');
+
+                try {
+                    System.IO.File.WriteAllText(srtPath, output);
+                    const fileInfo = new System.IO.FileInfo(srtPath);
+                    if (fileInfo.Exists && fileInfo.Length > 0) {
+                        Logger.ILog(`[whisper-sub] Post-processing: Successfully completed for ${srtPath}`);
+                    } else {
+                        Logger.ELog(`[whisper-sub] Post-processing: File appears empty or missing after write`);
+                        return false;
+                    }
+                } catch (writeErr) {
+                    Logger.ELog(`[whisper-sub] Post-processing: Failed to write file: ${writeErr}`);
+                    return false;
+                }
+
+                return true;
+            } catch (err) {
+                Logger.ELog(`[whisper-sub] Post-processing failed for ${srtPath}: ${err}`);
+                return false;
+            }
+        };
+        
+        // Process each created subtitle file
+        let postProcessedCount = 0;
+        for (const srtPath of createdSubtitles) {
+            if (postProcessSrt(srtPath, postProcessSettings)) {
+                postProcessedCount++;
+            }
+        }
+        
+        Logger.ILog(`[whisper-sub] Post-processing complete: ${postProcessedCount} of ${createdSubtitles.length} subtitle(s) processed`);
+    } else if (disableSubtitlePostProcessing) {
+        Logger.ILog('[whisper-sub] Subtitle post-processing is disabled');
     }
 
     return 1;
