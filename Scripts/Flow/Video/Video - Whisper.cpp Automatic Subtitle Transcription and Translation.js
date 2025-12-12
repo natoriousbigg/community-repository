@@ -304,6 +304,8 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 return false;
             }
         }
+        // Remove from set even if file doesn't exist to maintain consistency
+        existingSubtitleLanguages.delete(normalized);
         return false;
     };
     let created = false;
