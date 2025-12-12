@@ -1182,6 +1182,42 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 // Final 100% when done
                 Flow.PartPercentageUpdate(100);
 
+                // Final pass: Sort processed entries chronologically and re-index
+                // This ensures all entries are in correct order after all modifications
+                processed.sort((a, b) => a.startMs - b.startMs);
+                
+                // Validate and fix any remaining backwards timestamps between consecutive entries
+                let finalFixCount = 0;
+                for (let i = 1; i < processed.length; i++) {
+                    const prev = processed[i - 1];
+                    const current = processed[i];
+                    
+                    // If current entry starts before previous entry ends, fix it
+                    if (current.startMs < prev.endMs) {
+                        const gap = settings.minGapMs || 50;
+                        current.startMs = prev.endMs + gap;
+                        current.startTime = msToTime(current.startMs);
+                        
+                        // Ensure end time is still after start time
+                        if (current.endMs <= current.startMs) {
+                            current.endMs = current.startMs + (settings.timestampCorrectionDurationMs || 2000);
+                            current.endTime = msToTime(current.endMs);
+                        }
+                        
+                        changeLog.push(`Fixed backwards timestamp between entries ${i} and ${i + 1}: adjusted start time to maintain chronological order`);
+                        finalFixCount++;
+                    }
+                }
+                
+                if (finalFixCount > 0) {
+                    Logger.ILog(`[whisper-sub] Post-processing: Fixed ${finalFixCount} backwards timestamp(s) between consecutive entries`);
+                }
+                
+                // Re-index all entries sequentially
+                processed.forEach((entry, idx) => {
+                    entry.index = idx + 1;
+                });
+
                 // Log changes
                 if (changeLog.length > 0) {
                     Logger.ILog(`[whisper-sub] Post-processing changes for ${System.IO.Path.GetFileName(srtPath)}:`);
