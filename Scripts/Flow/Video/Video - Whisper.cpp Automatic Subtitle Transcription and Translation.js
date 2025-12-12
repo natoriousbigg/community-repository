@@ -722,9 +722,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     // Check if most words are the same (e.g., "doo doo doo doo")
                     const wordCounts = {};
                     words.forEach(w => { wordCounts[w] = (wordCounts[w] || 0) + 1; });
-                    const counts = Object.values(wordCounts);
-                    if (counts.length === 0) return false;
-                    const maxCount = Math.max(...counts);
+                    const maxCount = Math.max(...Object.values(wordCounts));
                     return maxCount >= words.length * 0.6; // 60% same word = repetitive
                 };
 
@@ -795,7 +793,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     if (countWords(current.text) < settings.minWordsPerEntry && processed.length > 0) {
                         const prev = processed[processed.length - 1];
                         const timeBetween = current.startMs - prev.endMs;
-                        // Only merge if entries are close together (positive gap within threshold)
+                        // Only merge if entries are close together (non-negative gap within threshold)
                         if (timeBetween >= 0 && timeBetween < settings.maxMergeGapMs) {
                             prev.text = prev.text + ' ' + current.text;
                             prev.endMs = current.endMs;
@@ -818,7 +816,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                         const prev = processed[processed.length - 1];
                         const timeDiff = current.startMs - prev.endMs;
                         
-                        // If there's a massive jump (> 30 minutes), it's likely an error
+                        // If there's a massive jump (larger than maxTimestampGapMs), it's likely an error
                         if (timeDiff > settings.maxTimestampGapMs) {
                             changeLog.push(`Warning: Large timestamp gap detected at entry ${current.index} (${Math.round(timeDiff/60000)} minutes)`);
                             // Adjust to follow previous entry with a small gap
@@ -843,7 +841,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                         const prev = processed[processed.length - 1];
                         const gapMs = current.startMs - prev.endMs;
                         
-                        // Log gaps larger than 30 seconds (may indicate missed audio)
+                        // Log gaps larger than minLogGapMs (may indicate missed audio)
                         if (gapMs > settings.minLogGapMs && gapMs < settings.maxTimestampGapMs) {
                             changeLog.push(`Note: ${Math.round(gapMs/1000)}s gap before entry ${current.index} (may be music/silence)`);
                         }
