@@ -800,7 +800,32 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     return false;
                 }
 
+                // Sort entries by start time to ensure chronological order
+                // Track original position of each entry to detect reordering
+                entries.forEach((entry, idx) => {
+                    entry.originalPosition = idx;
+                });
+                entries.sort((a, b) => a.startMs - b.startMs);
+                
+                // Count how many entries changed position after sorting
+                let reorderedCount = 0;
+                entries.forEach((entry, idx) => {
+                    if (entry.originalPosition !== idx) {
+                        reorderedCount++;
+                    }
+                    delete entry.originalPosition; // Clean up temporary property
+                });
+                
+                // Re-index entries after sorting
+                entries.forEach((entry, idx) => {
+                    entry.index = idx + 1;
+                });
+
                 let changeLog = [];
+                if (reorderedCount > 0) {
+                    changeLog.push(`Reordered ${reorderedCount} entries to fix timestamp sequence`);
+                    Logger.ILog(`[whisper-sub] Post-processing: Reordered ${reorderedCount} entries by timestamp`);
+                }
                 const processed = [];
 
                 const totalEntries = entries.length;
