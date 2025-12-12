@@ -1186,6 +1186,11 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 // This ensures all entries are in correct order after all modifications
                 processed.sort((a, b) => a.startMs - b.startMs);
                 
+                // Re-index all entries sequentially after sorting
+                processed.forEach((entry, idx) => {
+                    entry.index = idx + 1;
+                });
+                
                 // Validate and fix any remaining backwards timestamps between consecutive entries
                 let finalFixCount = 0;
                 for (let i = 1; i < processed.length; i++) {
@@ -1204,7 +1209,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                             current.endTime = msToTime(current.endMs);
                         }
                         
-                        changeLog.push(`Fixed backwards timestamp between entries ${i} and ${i + 1}: adjusted start time to maintain chronological order`);
+                        changeLog.push(`Fixed backwards timestamp between entries ${prev.index} and ${current.index}: adjusted start time to maintain chronological order`);
                         finalFixCount++;
                     }
                 }
@@ -1212,11 +1217,6 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 if (finalFixCount > 0) {
                     Logger.ILog(`[whisper-sub] Post-processing: Fixed ${finalFixCount} backwards timestamp(s) between consecutive entries`);
                 }
-                
-                // Re-index all entries sequentially
-                processed.forEach((entry, idx) => {
-                    entry.index = idx + 1;
-                });
 
                 // Log changes
                 if (changeLog.length > 0) {
@@ -1229,8 +1229,8 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 }
 
                 // Write back to file
-                const output = processed.map((entry, idx) => {
-                    return `${idx + 1}\n${entry.startTime} --> ${entry.endTime}\n${entry.text}\n`;
+                const output = processed.map((entry) => {
+                    return `${entry.index}\n${entry.startTime} --> ${entry.endTime}\n${entry.text}\n`;
                 }).join('\n');
 
                 try {
