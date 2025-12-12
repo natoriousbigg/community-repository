@@ -805,12 +805,18 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 // First pass: Fix individual entry timestamps before sorting
                 // This ensures entries with backwards timestamps (endMs <= startMs) are corrected
                 // before they are sorted, so they end up in the correct chronological position
+                let fixedTimestampCount = 0;
                 for (const entry of entries) {
                     if (entry.endMs <= entry.startMs) {
                         entry.endMs = entry.startMs + settings.timestampCorrectionDurationMs;
                         entry.endTime = msToTime(entry.endMs);
                         changeLog.push(`Fixed backwards timestamp in entry ${entry.index}: end time was before/equal to start time`);
+                        fixedTimestampCount++;
                     }
+                }
+                
+                if (fixedTimestampCount > 0) {
+                    Logger.ILog(`[whisper-sub] Post-processing: Fixed ${fixedTimestampCount} backwards timestamp(s)`);
                 }
 
                 // Second pass: Sort entries chronologically by start time
