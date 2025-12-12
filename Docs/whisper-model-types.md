@@ -14,7 +14,6 @@ Previous versions distinguished between English-only models (`*.en.bin`) and mul
 ## Model Recommendations
 
 For best results:
-1. Install the **Whisper.cpp - Binary and Base Model** DockerMod (provides the binary and ggml-base.bin for language detection)
-2. Install the **Whisper.cpp - Large V3 Turbo Model** DockerMod (provides ggml-large-v3-turbo.bin for transcription)
+1. Install the **Whisper.cpp - Binary and Models** DockerMod (provides the binary, ggml-base.bin for language detection, and ggml-large-v3-turbo.bin for transcription)
 
-Alternative models (ggml-large-v3.bin, ggml-medium.bin) are also supported but may be slower or lower quality than ggml-large-v3-turbo.bin.
+Alternative models (ggml-large-v3.bin, ggml-medium.bin) are also supported but may be slower or lower quality than ggml-large-v3-turbo.bin. You can manually download and place them in `/app/common/whispercpp/models/` if needed.

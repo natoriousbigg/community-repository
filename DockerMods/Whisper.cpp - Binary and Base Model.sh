@@ -1,10 +1,10 @@
 # ----------------------------------------------------------------------------------------------------
-# Name: Whisper.cpp - Binary and Base Model
+# Name: Whisper.cpp - Binary and Models
 # Description: Installs the whisper.cpp binary (auto-detects GPU type and CPU capabilities) and downloads the ggml-base
-#              multilingual model (for language detection) and the Silero VAD model into /app/common/whispercpp/models.
-#              Note: ggml-base is used only for language detection. Install 'Whisper.cpp - Large V3 Turbo Model' for transcription.
+#              multilingual model (for language detection), ggml-large-v3-turbo model (for transcription), and the Silero VAD 
+#              model into /app/common/whispercpp/models. Sets HOME=/temp to prevent shader cache permission errors.
 # Author: Gas-X-ExtraStrength
-# Revision: 6
+# Revision: 7
 # Icon: https://meta-l.cdn.bubble.io/cdn-cgi/image/w=64,h=64,f=auto,dpr=2,fit=contain/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -14,6 +14,12 @@ set -eu
 log() {
     echo "[whisper.cpp] $1" >&2
 }
+
+# Set HOME to /temp to avoid shader cache permission errors
+export HOME=/temp
+mkdir -p /temp
+chmod 777 /temp
+log "Set HOME=/temp for shader cache and temp file writes."
 
 INSTALL_ROOT="/app/common/whispercpp"
 BIN_DIR="${INSTALL_ROOT}/bin"
@@ -173,6 +179,17 @@ if [ -f "${BASE_MULTILINGUAL}" ]; then
 else
     log "Downloading multilingual base model to ${BASE_MULTILINGUAL} (used for language detection)."
     curl -L --fail "${MODEL_URL}" -o "${BASE_MULTILINGUAL}"
+fi
+
+# Download large-v3-turbo model for transcription
+LARGE_V3_TURBO="${MODEL_DIR}/ggml-large-v3-turbo.bin"
+LARGE_V3_TURBO_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"
+
+if [ -f "${LARGE_V3_TURBO}" ]; then
+    log "Large V3 Turbo model already present at ${LARGE_V3_TURBO}; skipping download."
+else
+    log "Downloading large-v3-turbo model to ${LARGE_V3_TURBO} (used for transcription)."
+    curl -L --fail "${LARGE_V3_TURBO_URL}" -o "${LARGE_V3_TURBO}"
 fi
 
 # Download Silero VAD model
