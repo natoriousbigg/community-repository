@@ -81,15 +81,6 @@ function Script(NoGpu) {
         legacyModelLink ? System.IO.Path.GetFileName(legacyModelLink) : ''
     ].filter(Boolean);
 
-    const englishCandidates = [
-        'ggml-large-v3-turbo.bin',
-        'ggml-large-v3.bin',
-        'ggml-large.bin',
-        'ggml-medium.en.bin',
-        'ggml-base.en.bin',
-        'ggml-base.bin'
-    ];
-
     const resolveModel = (explicitPath, fallbackDirs, candidates) => {
         if (explicitPath) {
             if (System.IO.Directory.Exists(explicitPath)) {
@@ -103,12 +94,10 @@ function Script(NoGpu) {
         return pickFromDirectories(fallbackDirs, candidates);
     };
 
-    // If override is a .bin file, use it for both multilingual and English tasks
+    // If override is a .bin file, use it; otherwise find the best available model
     let multilingualModel = overrideIsFile
         ? variableModel
         : resolveModel('', modelSearchDirs, multilingualCandidates);
-    if (!multilingualModel)
-        multilingualModel = resolveModel('', modelSearchDirs, englishCandidates);
 
     const missing = [];
     if (!System.IO.File.Exists(whisperCli))

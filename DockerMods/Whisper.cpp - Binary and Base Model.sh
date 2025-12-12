@@ -1,9 +1,10 @@
 # ----------------------------------------------------------------------------------------------------
 # Name: Whisper.cpp - Binary and Base Model
 # Description: Installs the whisper.cpp binary (auto-detects GPU type and CPU capabilities) and downloads the ggml-base
-#              multilingual and English models, as well as the Silero VAD model into /app/common/whispercpp/models.
+#              multilingual model (for language detection) and the Silero VAD model into /app/common/whispercpp/models.
+#              Note: ggml-base is used only for language detection. Install 'Whisper.cpp - Large V3 Turbo Model' for transcription.
 # Author: Gas-X-ExtraStrength
-# Revision: 5
+# Revision: 6
 # Icon: https://meta-l.cdn.bubble.io/cdn-cgi/image/w=64,h=64,f=auto,dpr=2,fit=contain/f1695308256768x626644891139990000/open-ai.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -18,17 +19,15 @@ INSTALL_ROOT="/app/common/whispercpp"
 BIN_DIR="${INSTALL_ROOT}/bin"
 MODEL_DIR="${INSTALL_ROOT}/models"
 BASE_MULTILINGUAL="${MODEL_DIR}/ggml-base.bin"
-BASE_ENGLISH="${MODEL_DIR}/ggml-base.en.bin"
 BIN_LINK="/usr/local/bin/whisper-cli"
 VERSION="1.8.2"
 MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin"
-MODEL_EN_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
 
 if [ "${1:-}" = "--uninstall" ]; then
     log "Uninstall flag detected. Removing whisper.cpp binaries and models..."
     rm -f "${BIN_LINK}" || true
     rm -rf "${INSTALL_ROOT}"
-    rm -f "${BASE_MULTILINGUAL}" "${BASE_ENGLISH}" || true
+    rm -f "${BASE_MULTILINGUAL}" || true
     rmdir --ignore-fail-on-non-empty "${MODEL_DIR}" 2>/dev/null || true
     log "Uninstall complete."
     exit 0
@@ -170,17 +169,10 @@ log "Linking binary at ${BIN_LINK}."
 ln -sf "${binary_path}" "${BIN_LINK}"
 
 if [ -f "${BASE_MULTILINGUAL}" ]; then
-    log "Multilingual model already present at ${BASE_MULTILINGUAL}; skipping download."
+    log "Multilingual base model already present at ${BASE_MULTILINGUAL}; skipping download."
 else
-    log "Downloading multilingual base model to ${BASE_MULTILINGUAL}."
+    log "Downloading multilingual base model to ${BASE_MULTILINGUAL} (used for language detection)."
     curl -L --fail "${MODEL_URL}" -o "${BASE_MULTILINGUAL}"
-fi
-
-if [ -f "${BASE_ENGLISH}" ]; then
-    log "English model already present at ${BASE_ENGLISH}; skipping download."
-else
-    log "Downloading English base model to ${BASE_ENGLISH}."
-    curl -L --fail "${MODEL_EN_URL}" -o "${BASE_ENGLISH}"
 fi
 
 # Download Silero VAD model
