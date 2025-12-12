@@ -1182,6 +1182,62 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 // Final 100% when done
                 Flow.PartPercentageUpdate(100);
 
+                // Final pass: Sort processed entries chronologically and re-index
+                // This ensures all entries are in correct order after all modifications
+                processed.sort((a, b) => a.startMs - b.startMs);
+                
+                // Re-index all entries sequentially after sorting
+                processed.forEach((entry, idx) => {
+                    entry.index = idx + 1;
+                });
+                
+                // Validate and fix any remaining backwards timestamps between consecutive entries
+                let finalFixCount = 0;
+                for (let i = 1; i < processed.length; i++) {
+                    const prev = processed[i - 1];
+                    const current = processed[i];
+                    
+                    // If current entry starts before previous entry ends, fix it
+                    if (current.startMs < prev.endMs) {
+                        const minGap = settings.minGapMs;
+                        current.startMs = prev.endMs + minGap;
+                        current.startTime = msToTime(current.startMs);
+                        
+                        // Ensure end time is after start time
+                        if (current.endMs < current.startMs) {
+                            current.endMs = current.startMs + settings.timestampCorrectionDurationMs;
+                            current.endTime = msToTime(current.endMs);
+                            
+                            // If there's a next entry, ensure we don't overlap with it
+                            if (i < processed.length - 1) {
+                                const next = processed[i + 1];
+                                if (current.endMs > next.startMs) {
+                                    // Cap current end time to not overlap with next entry
+                                    const cappedEndMs = next.startMs - minGap;
+                                    // Only cap if it still results in a positive or zero duration
+                                    // Zero-duration entries are acceptable for instantaneous captions in some subtitle formats
+                                    if (cappedEndMs >= current.startMs) {
+                                        current.endMs = cappedEndMs;
+                                        current.endTime = msToTime(current.endMs);
+                                    } else {
+                                        // Entry is squeezed between prev and next with no room
+                                        // Use minGap as duration - the maximum we can fit without overlapping
+                                        current.endMs = current.startMs + minGap;
+                                        current.endTime = msToTime(current.endMs);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        changeLog.push(`Fixed backwards timestamp between entries ${prev.index} and ${current.index}: adjusted start time to maintain chronological order`);
+                        finalFixCount++;
+                    }
+                }
+                
+                if (finalFixCount > 0) {
+                    Logger.ILog(`[whisper-sub] Post-processing: Fixed ${finalFixCount} backwards timestamp(s) between consecutive entries`);
+                }
+
                 // Log changes
                 if (changeLog.length > 0) {
                     Logger.ILog(`[whisper-sub] Post-processing changes for ${System.IO.Path.GetFileName(srtPath)}:`);
@@ -1193,8 +1249,8 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 }
 
                 // Write back to file
-                const output = processed.map((entry, idx) => {
-                    return `${idx + 1}\n${entry.startTime} --> ${entry.endTime}\n${entry.text}\n`;
+                const output = processed.map((entry) => {
+                    return `${entry.index}\n${entry.startTime} --> ${entry.endTime}\n${entry.text}\n`;
                 }).join('\n');
 
                 try {
