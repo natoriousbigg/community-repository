@@ -402,12 +402,12 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             '--temperature-inc', '0.0',
             '--max-context', '0',
             '--entropy-thold', '2.2',
-            '--word-thold', '0.01',
-            '--no-speech-thold', '0.75',
+            '--word-thold', '0.5',
+            '--no-speech-thold', '0.8',
             '--logprob-thold', '-0.5',
             '--print-progress',
             '--split-on-word',
-            '--max-len', '60',
+            '--max-len', '80',
             '--suppress-nst'
         ];
 
@@ -699,19 +699,19 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         // Default post-processing settings
         const postProcessSettings = {
             minDurationMs: 300,
-            maxDurationMs: 6000,
+            maxDurationMs: 7000,          // Increased from 6000 to 7000
             minGapMs: 50,
             minReadableDurationMs: 1000,
-            maxCharsPerLine: 60,
+            maxCharsPerLine: 80,          // Increased from 60 to 80
             shortSegmentThreshold: 3,
             longSegmentThreshold: 10,
             similarityThreshold: 0.85,
-            minWordsPerEntry: 4,          // Changed from 3 - more aggressive fragment merging
+            minWordsPerEntry: 3,          // Minimum words per subtitle entry
+            maxMsPerWord: 3000,           // Maximum milliseconds per word (flag if exceeded)
             maxMergeGapMs: 2000,          // Max gap for merging fragments (2 seconds)
             maxRepetitiveDurationMs: 3000, // Max duration for repetitive text (3 seconds)
             repetitiveCheckThresholdMs: 3000, // Min duration to check for repetitive text (3 seconds)
             maxTimestampGapMs: 1800000,   // Max gap before treating as error (30 minutes)
-            minGapMs: 50,                 // Min gap between entries (50ms)
             timestampCorrectionGapMs: 100, // Gap to add when correcting timestamp errors (100ms)
             timestampCorrectionDurationMs: 2000, // Duration to use when correcting malformed timestamps (2 seconds)
             minLogGapMs: 30000            // Min gap to log for debugging (30 seconds)
@@ -763,6 +763,17 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                 // Helper: Count words in text
                 const countWords = (text) => {
                     return text.trim().split(/\s+/).filter(w => w.length > 0).length;
+                };
+
+                // Helper: Detect suspicious entries (single words with very long duration)
+                const isSuspiciousEntry = (entry) => {
+                    const wordCount = countWords(entry.text);
+                    const durationMs = entry.endMs - entry.startMs;
+                    const msPerWord = durationMs / wordCount;
+                    
+                    // Normal speech is ~300-500ms per word
+                    // Flag if >3 seconds per word (3000ms) - this is abnormally slow
+                    return msPerWord > 3000;
                 };
 
                 // Helper: Split text into two balanced parts
@@ -855,7 +866,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     // Validate timestamp ordering
                     if (current.endMs <= current.startMs) {
                         changeLog.push(`Fixed invalid timestamps in entry ${current.index}`);
-                        current.endMs = current.startMs + settings.invalidTimestampFixDurationMs;
+                        current.endMs = current.startMs + settings.timestampCorrectionDurationMs;
                         current.endTime = msToTime(current.endMs);
                     }
                     
@@ -867,7 +878,44 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                         continue;
                     }
 
-                    // More aggressive fragment merging: merge entries with fewer than 4 words if within 2 seconds of previous
+                    // Remove or compress suspicious stretched entries
+                    if (isSuspiciousEntry(current)) {
+                        const wordCount = countWords(current.text);
+                        const durationMs = current.endMs - current.startMs;
+                        
+                        // If a single word spans more than 5 seconds, it's likely a hallucination during music/silence
+                        if (wordCount === 1 && durationMs > 5000) {
+                            changeLog.push(`Removed hallucinated single word "${current.text}" (${Math.round(durationMs/1000)}s duration)`);
+                            continue; // Skip this entry entirely
+                        }
+                        
+                        // For multi-word entries that are stretched, compress the duration
+                        if (wordCount > 1 && durationMs > wordCount * 3000) {
+                            const newDuration = wordCount * 1500; // ~1.5 seconds per word max
+                            current.endMs = current.startMs + newDuration;
+                            current.endTime = msToTime(current.endMs);
+                            changeLog.push(`Compressed stretched entry "${current.text}" from ${Math.round(durationMs/1000)}s to ${Math.round(newDuration/1000)}s`);
+                        }
+                    }
+
+                    // Merge consecutive short entries (single/two words) that are close together
+                    if (processed.length > 0) {
+                        const prev = processed[processed.length - 1];
+                        const prevWordCount = countWords(prev.text);
+                        const currentWordCount = countWords(current.text);
+                        const timeBetween = current.startMs - prev.endMs;
+                        
+                        // If both entries have 2 or fewer words and are within 500ms, merge them
+                        if (prevWordCount <= 2 && currentWordCount <= 2 && timeBetween >= 0 && timeBetween < 500) {
+                            changeLog.push(`Merged short fragments: "${prev.text}" + "${current.text}"`);
+                            prev.text += ' ' + current.text;
+                            prev.endMs = current.endMs;
+                            prev.endTime = current.endTime;
+                            continue; // Skip adding current as separate entry
+                        }
+                    }
+
+                    // More aggressive fragment merging: merge entries with fewer than 3 words if within 2 seconds of previous
                     if (countWords(current.text) < settings.minWordsPerEntry && processed.length > 0) {
                         const prev = processed[processed.length - 1];
                         const timeBetween = current.startMs - prev.endMs;
@@ -878,6 +926,21 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                             prev.endTime = current.endTime;
                             changeLog.push(`Merged short fragment "${current.text}" into previous entry`);
                             continue;
+                        }
+                    }
+
+                    // Minimum words per entry validation - look ahead to merge with next entry if possible
+                    const currentWordCount = countWords(current.text);
+                    if (currentWordCount < settings.minWordsPerEntry && i < entries.length - 1) {
+                        // Look ahead to merge with next entry if possible
+                        const next = entries[i + 1];
+                        if (next && (next.startMs - current.endMs) < 2000) {
+                            // Merge current into next by prepending
+                            next.text = current.text + ' ' + next.text;
+                            next.startMs = current.startMs;
+                            next.startTime = current.startTime;
+                            changeLog.push(`Merged short entry "${current.text}" with next entry`);
+                            continue; // Skip current, it's been merged into next
                         }
                     }
 
@@ -978,19 +1041,6 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                             changeLog.push(`Merged duplicate entries ${prev.index} and ${current.index} (similarity: ${similarity.toFixed(2)})`);
                             prev.endTime = current.endTime;
                             prev.endMs = current.endMs;
-                            continue;
-                        }
-                    }
-
-                    // Merge short word fragments
-                    if (countWords(current.text) < settings.minWordsPerEntry && processed.length > 0) {
-                        const prev = processed[processed.length - 1];
-                        const timeBetween = current.startMs - prev.endMs;
-                        if (timeBetween < settings.fragmentMergeMaxGapMs) {
-                            prev.text = prev.text + ' ' + current.text;
-                            prev.endMs = current.endMs;
-                            prev.endTime = current.endTime;
-                            changeLog.push(`Merged short fragment "${current.text}" into previous entry`);
                             continue;
                         }
                     }
