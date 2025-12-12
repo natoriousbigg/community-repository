@@ -9,7 +9,25 @@ When Whisper.cpp leaves subtitles on screen during silence, tighten its segmenti
 - **Cap segment length**: `--max-len 80` (roughly four lines of ~16 words) forces Whisper.cpp to close a segment instead of letting it accumulate a long chunk that lingers on-screen.
 - **Limit context carry-over**: `--max-context 0` stops the model from reusing too much prior text, which can otherwise encourage longer, merged segments.
 
-## Example command
+## Example commands
+
+**For English audio:**
+```bash
+./main \
+  -m models/ggml-distil-large-v3.5.bin -f input.wav -osrt \
+  --no-speech-thold 0.6 \
+  --split-on-word true --max-len 80 --max-context 0
+```
+
+**For non-English audio:**
+```bash
+./main \
+  -m models/ggml-large-v3-turbo.bin -f input.wav -osrt \
+  --no-speech-thold 0.6 \
+  --split-on-word true --max-len 80 --max-context 0
+```
+
+**For translation to English:**
 ```bash
 ./main \
   -m models/ggml-large-v3-turbo.bin -f input.wav -osrt --translate \

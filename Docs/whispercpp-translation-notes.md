@@ -13,18 +13,26 @@ Translation mode replaces the transcript with the translated text, so the origin
 ## Sample commands with silence filters
 Use the same silence-handling switches for both passes so timing stays consistent.
 
-**Transcription (source language)**
+**Transcription (source language - non-English)**
 ```bash
 ./main \
-  -m models/ggml-medium.bin -f input.wav -osrt \
+  -m models/ggml-large-v3-turbo.bin -f input.wav -osrt \
   --split-on-word true --max-len 80 --max-context 0 \
   --no-speech-thold 0.6
 ```
 
-**Translation (English)**
+**Transcription (source language - English)**
 ```bash
 ./main \
-  -m models/ggml-medium.bin -f input.wav -osrt --translate true \
+  -m models/ggml-distil-large-v3.5.bin -f input.wav -osrt \
+  --split-on-word true --max-len 80 --max-context 0 \
+  --no-speech-thold 0.6
+```
+
+**Translation (to English)**
+```bash
+./main \
+  -m models/ggml-large-v3-turbo.bin -f input.wav -osrt --translate true \
   --split-on-word true --max-len 80 --max-context 0 \
   --no-speech-thold 0.6
 ```
