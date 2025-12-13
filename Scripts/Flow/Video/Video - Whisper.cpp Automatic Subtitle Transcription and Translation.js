@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files using optimized models (ggml-distil-large-v3.5 for English, ggml-large-v3-turbo for other languages), with optional translation and flexible subtitle placement.
  * @author Gas-X-Extra-Strength
- * @revision 2
+ * @revision 3
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English.
@@ -16,8 +16,10 @@
  * @param {bool} DisableVAD Disable Voice Activity Detection (VAD) even if the model is available.
  */
 function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubtitles = false, DebugMode, NoGpu, FixAudioLanguages, SubtitleSaveDir, DisableVAD) {
-    const vi = Variables['vi']?.VideoInfo;
-    const filePath = Variables['file']?.FullName;
+    const viVar = Variables['vi'];
+    const vi = viVar ? viVar.VideoInfo : null;
+    const fileVar = Variables['file'];
+    const filePath = fileVar ? fileVar.FullName : null;
 
     if (!vi || !filePath) {
         Logger.ELog('[whisper-sub] Missing video info or working file.');
