@@ -3,7 +3,7 @@
 # Description: Installs SubtitleEdit CLI (self-contained) for professional SRT subtitle post-processing.
 #              Provides tools for fixing common errors, removing formatting, HI text removal, and more.
 # Author: natoriousbigg
-# Revision: 2
+# Revision: 3
 # Icon: https://raw.githubusercontent.com/SubtitleEdit/subtitleedit/main/src/ui/Icons/SE.png
 # ----------------------------------------------------------------------------------------------------
 
@@ -15,9 +15,7 @@ log() {
 }
 
 INSTALL_ROOT="/app/common/subtitleedit"
-BIN_DIR="${INSTALL_ROOT}/bin"
-WRAPPER_SCRIPT="${BIN_DIR}/subtitleedit"
-BIN_LINK="/usr/local/bin/subtitleedit"
+BIN_LINK="/usr/local/bin/seconv"
 REPO_URL="https://github.com/SubtitleEdit/subtitleedit-cli.git"
 
 if [ "${1:-}" = "--uninstall" ]; then
@@ -67,7 +65,7 @@ else
 fi
 
 log "Creating directory structure at ${INSTALL_ROOT}."
-mkdir -p "${INSTALL_ROOT}" "${BIN_DIR}"
+mkdir -p "${INSTALL_ROOT}"
 
 # Clone and build SubtitleEdit CLI from source
 log "Cloning SubtitleEdit CLI repository."
@@ -107,24 +105,14 @@ fi
 # Make binary executable
 chmod +x "${INSTALL_ROOT}/seconv"
 
-# Create wrapper script
-log "Creating wrapper script at ${WRAPPER_SCRIPT}."
-cat > "${WRAPPER_SCRIPT}" << 'EOF'
-#!/bin/bash
-# SubtitleEdit CLI wrapper script
-exec /app/common/subtitleedit/seconv "$@"
-EOF
-
-chmod +x "${WRAPPER_SCRIPT}"
-
-# Create symlink
+# Create symlink to seconv binary
 log "Creating symlink at ${BIN_LINK}."
-ln -sf "${WRAPPER_SCRIPT}" "${BIN_LINK}"
+ln -sf "${INSTALL_ROOT}/seconv" "${BIN_LINK}"
 
 # Verify installation
-if [ -x "${BIN_LINK}" ] && "${BIN_LINK}" --help >/dev/null 2>&1; then
+if [ -x "${BIN_LINK}" ] && "${BIN_LINK}" /help >/dev/null 2>&1; then
     log "SubtitleEdit CLI installation complete and verified."
-    log "Usage: subtitleedit [options]"
+    log "Usage: seconv <pattern> <format> [/options]"
 else
     log "WARNING: Installation completed but verification failed."
 fi
