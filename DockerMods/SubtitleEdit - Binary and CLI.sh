@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------------------------------
 # Name: SubtitleEdit - Binary and CLI
-# Description: Installs SubtitleEdit CLI with .NET runtime for professional SRT subtitle post-processing.
+# Description: Installs SubtitleEdit CLI (self-contained) for professional SRT subtitle post-processing.
 #              Provides tools for fixing common errors, removing formatting, HI text removal, and more.
 # Author: natoriousbigg
 # Revision: 1

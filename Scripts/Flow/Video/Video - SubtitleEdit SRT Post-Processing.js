@@ -160,35 +160,31 @@ function Script(FixCommonErrors, RemoveFormatting, RemoveTextForHI, RedoCasing, 
 
         try {
             const args = buildCommand(srtPath);
-            const cmdLine = args.join(' ');
             
-            Logger.ILog('[subtitleedit-postproc] Running: ' + cmdLine);
+            // Log the command for debugging
+            const cmdDisplay = args.join(' ');
+            Logger.ILog('[subtitleedit-postproc] Running: ' + cmdDisplay);
 
-            const process = System.Diagnostics.Process.Create();
-            process.StartInfo.FileName = args[0];
-            process.StartInfo.Arguments = args.slice(1).join(' ');
-            process.StartInfo.UseShellExecute = false;
-            process.StartInfo.RedirectStandardOutput = true;
-            process.StartInfo.RedirectStandardError = true;
-            process.StartInfo.CreateNoWindow = true;
+            // Use Flow.Execute with argumentList for proper argument handling
+            const result = Flow.Execute({
+                command: args[0],
+                argumentList: args.slice(1),
+                logOutput: false
+            });
 
-            process.Start();
-            const output = process.StandardOutput.ReadToEnd();
-            const error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-
-            const exitCode = process.ExitCode;
-
-            if (exitCode !== 0) {
-                Logger.WLog('[subtitleedit-postproc] SubtitleEdit returned exit code ' + exitCode);
-                if (error) {
-                    Logger.WLog('[subtitleedit-postproc] Error: ' + error);
+            if (!result.standardOutput && !result.standardError && result.exitCode === 0) {
+                Logger.ILog('[subtitleedit-postproc] Successfully processed: ' + System.IO.Path.GetFileName(srtPath));
+                processedCount++;
+            } else if (result.exitCode !== 0) {
+                Logger.WLog('[subtitleedit-postproc] SubtitleEdit returned exit code ' + result.exitCode);
+                if (result.standardError) {
+                    Logger.WLog('[subtitleedit-postproc] Error: ' + result.standardError);
                 }
                 failedCount++;
             } else {
                 Logger.ILog('[subtitleedit-postproc] Successfully processed: ' + System.IO.Path.GetFileName(srtPath));
-                if (output) {
-                    Logger.ILog('[subtitleedit-postproc] Output: ' + output);
+                if (result.standardOutput) {
+                    Logger.ILog('[subtitleedit-postproc] Output: ' + result.standardOutput);
                 }
                 processedCount++;
             }
