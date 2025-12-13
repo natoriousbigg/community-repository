@@ -3,7 +3,7 @@
  * @uid 3f3f5e2f-8g8c-6c56-dh4c-hhe1e7f8h3cg
  * @description Post-processes SRT subtitle files using seconv CLI (SubtitleEdit). Includes pre-processing to strip RTL/LTR Unicode control characters and fix leading punctuation positioning. Fixes RTL (right-to-left) text encoding issues, applies professional subtitle standards: merges same timecodes/texts, balances and splits long lines, applies duration limits, and removes formatting. Optionally removes text for hearing impaired.
  * @author natoriousbigg
- * @revision 4
+ * @revision 5
  * @output Subtitle Processed
  * @output No Subtitle Processing Needed
  * @param {bool} RemoveTextForHI Remove text for hearing impaired (brackets, sound effects). Default: false.
@@ -111,7 +111,8 @@ function Script(RemoveTextForHI, Encoding, ProcessExistingSrtFiles) {
     
     if (processExisting) {
         // Process all .srt files in the original video folder
-        const workingFile = Variables.file?.FullName;
+        const fileVar = Variables['file'];
+        const workingFile = fileVar ? fileVar.FullName : null;
         
         if (!workingFile) {
             Logger.ELog('[subtitleedit-postproc] Cannot process existing SRT files: working file path not available');
@@ -146,7 +147,7 @@ function Script(RemoveTextForHI, Encoding, ProcessExistingSrtFiles) {
         }
     } else {
         // Use Whisper-generated subtitles from Variables.CreatedSubtitlePaths
-        const createdPaths = Variables.CreatedSubtitlePaths;
+        const createdPaths = Variables['CreatedSubtitlePaths'];
         
         if (!createdPaths) {
             Logger.ILog('[subtitleedit-postproc] No subtitles found in Variables.CreatedSubtitlePaths');
