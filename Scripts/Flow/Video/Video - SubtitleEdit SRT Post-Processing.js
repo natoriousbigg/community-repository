@@ -172,21 +172,18 @@ function Script(FixCommonErrors, RemoveFormatting, RemoveTextForHI, RedoCasing, 
                 logOutput: false
             });
 
-            if (!result.standardOutput && !result.standardError && result.exitCode === 0) {
-                Logger.ILog('[subtitleedit-postproc] Successfully processed: ' + System.IO.Path.GetFileName(srtPath));
-                processedCount++;
-            } else if (result.exitCode !== 0) {
-                Logger.WLog('[subtitleedit-postproc] SubtitleEdit returned exit code ' + result.exitCode);
-                if (result.standardError) {
-                    Logger.WLog('[subtitleedit-postproc] Error: ' + result.standardError);
-                }
-                failedCount++;
-            } else {
+            if (result.exitCode === 0) {
                 Logger.ILog('[subtitleedit-postproc] Successfully processed: ' + System.IO.Path.GetFileName(srtPath));
                 if (result.standardOutput) {
                     Logger.ILog('[subtitleedit-postproc] Output: ' + result.standardOutput);
                 }
                 processedCount++;
+            } else {
+                Logger.WLog('[subtitleedit-postproc] SubtitleEdit returned exit code ' + result.exitCode);
+                if (result.standardError) {
+                    Logger.WLog('[subtitleedit-postproc] Error: ' + result.standardError);
+                }
+                failedCount++;
             }
         } catch (err) {
             Logger.ELog('[subtitleedit-postproc] Error processing ' + srtPath + ': ' + err);
