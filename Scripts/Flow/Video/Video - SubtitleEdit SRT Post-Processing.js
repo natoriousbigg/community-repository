@@ -1,7 +1,7 @@
 /**
  * @name Video - SubtitleEdit SRT Post-Processing
  * @uid 3f3f5e2f-8g8c-6c56-dh4c-hhe1e7f8h3cg
- * @description Post-processes SRT subtitle files using seconv CLI (SubtitleEdit). Applies professional subtitle standards including merging same timecodes/texts, splitting long lines, applying duration limits, redoing casing, and removing formatting. Optional: remove HI text.
+ * @description Post-processes SRT subtitle files using seconv CLI (SubtitleEdit). Applies professional subtitle standards: merges same timecodes/texts, splits long lines, applies duration limits, redoes casing, and removes formatting. Optionally removes text for hearing impaired.
  * @author natoriousbigg
  * @revision 2
  * @output Subtitle Processed
@@ -36,7 +36,7 @@ function Script(RemoveTextForHI, Encoding, ProcessExistingSrtFiles) {
     const processExisting = parseBoolean(ProcessExistingSrtFiles, false);
 
     // Detect SubtitleEdit CLI (seconv) - check Variables first, then fallback to default path
-    let subtitleEditPath = Variables['seconv'] || Variables['subtitleedit'] || '/usr/local/bin/seconv';
+    const subtitleEditPath = Variables['seconv'] || Variables['subtitleedit'] || '/usr/local/bin/seconv';
 
     // Verify SubtitleEdit exists
     if (!System.IO.File.Exists(subtitleEditPath)) {
