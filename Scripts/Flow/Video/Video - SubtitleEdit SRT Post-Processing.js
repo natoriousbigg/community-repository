@@ -32,7 +32,15 @@ function Script(FixCommonErrors, RemoveFormatting, RemoveTextForHI, RedoCasing, 
     const removeTextForHI = parseBoolean(RemoveTextForHI, false);
     const redoCasing = parseBoolean(RedoCasing, false);
     const splitLongLines = parseBoolean(SplitLongLines, false);
-    const encoding = (Encoding || 'UTF-8').toString().trim();
+    
+    // Validate and sanitize encoding parameter
+    let encoding = (Encoding || 'UTF-8').toString().trim();
+    // Only allow alphanumeric characters, hyphens, and underscores
+    if (!/^[a-zA-Z0-9_-]+$/.test(encoding)) {
+        Logger.WLog('[subtitleedit-postproc] Invalid encoding value: ' + encoding + ', defaulting to UTF-8');
+        encoding = 'UTF-8';
+    }
+    
     const processExisting = parseBoolean(ProcessExistingSrtFiles, false);
 
     // Detect SubtitleEdit CLI (seconv)
@@ -114,7 +122,7 @@ function Script(FixCommonErrors, RemoveFormatting, RemoveTextForHI, RedoCasing, 
     const buildCommand = (srtPath) => {
         const args = [
             subtitleEditPath,
-            srtPath,  // Input file pattern
+            srtPath,  // Input file path
             'srt'     // Output format (keep as SRT)
         ];
 
