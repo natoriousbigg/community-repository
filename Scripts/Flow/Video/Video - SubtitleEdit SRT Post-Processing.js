@@ -1,9 +1,9 @@
 /**
  * @name Video - SubtitleEdit SRT Post-Processing
  * @uid 3f3f5e2f-8g8c-6c56-dh4c-hhe1e7f8h3cg
- * @description Post-processes SRT subtitle files using seconv CLI (SubtitleEdit). Fixes RTL (right-to-left) text encoding issues, applies professional subtitle standards: merges same timecodes/texts, balances and splits long lines, applies duration limits, and removes formatting. Optionally removes text for hearing impaired.
+ * @description Post-processes SRT subtitle files using seconv CLI (SubtitleEdit). Includes pre-processing to strip RTL/LTR Unicode control characters and fix leading punctuation positioning. Fixes RTL (right-to-left) text encoding issues, applies professional subtitle standards: merges same timecodes/texts, balances and splits long lines, applies duration limits, and removes formatting. Optionally removes text for hearing impaired.
  * @author natoriousbigg
- * @revision 3
+ * @revision 4
  * @output Subtitle Processed
  * @output No Subtitle Processing Needed
  * @param {bool} RemoveTextForHI Remove text for hearing impaired (brackets, sound effects). Default: false.
@@ -11,6 +11,64 @@
  * @param {bool} ProcessExistingSrtFiles Process all .srt files in the original video folder instead of only Whisper-generated ones.
  */
 function Script(RemoveTextForHI, Encoding, ProcessExistingSrtFiles) {
+    // Pre-processing function to fix RTL issues
+    const preprocessSrtFile = (srtPath) => {
+        try {
+            // Read the entire SRT file
+            let content = System.IO.File.ReadAllText(srtPath);
+            
+            // Strip RTL/LTR Unicode control characters
+            // U+200E (LTR Mark), U+200F (RTL Mark), U+202A (LTR Embedding), U+202B (RTL Embedding),
+            // U+202C (Pop Directional Formatting), U+202D (LTR Override), U+202E (RTL Override),
+            // U+2066 (LTR Isolate), U+2067 (RTL Isolate), U+2068 (First Strong Isolate), U+2069 (Pop Directional Isolate)
+            content = content.replace(/[\u200E\u200F\u202A\u202B\u202C\u202D\u202E\u2066\u2067\u2068\u2069]/g, '');
+            
+            // Detect line ending style to preserve it
+            const lineEnding = content.includes('\r\n') ? '\r\n' : '\n';
+            
+            // Fix punctuation positioning - split by lines and process each
+            const lines = content.split(/\r?\n/);
+            const processedLines = [];
+            
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i];
+                
+                // Skip timestamp lines (e.g., "00:00:01,000 --> 00:00:03,000")
+                // Skip sequence number lines (just digits)
+                // Skip empty lines
+                if (/^\d{2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{2}:\d{2}:\d{2},\d{3}$/.test(line) ||
+                    /^\d+$/.test(line) ||
+                    line.trim() === '') {
+                    processedLines.push(line);
+                    continue;
+                }
+                
+                // Fix leading punctuation: move it to the end
+                // Pattern: Line starts with `. ` or `? ` or `! ` or `, ` followed by text (or empty)
+                const punctMatch = line.match(/^([.?!,])\s+(.*)$/);
+                if (punctMatch) {
+                    const punct = punctMatch[1];
+                    const text = punctMatch[2];
+                    // Only transform if there's actual text after the punctuation
+                    if (text.length > 0) {
+                        line = text + punct;
+                    }
+                }
+                
+                processedLines.push(line);
+            }
+            
+            // Write the cleaned content back to the file, preserving line endings
+            const processedContent = processedLines.join(lineEnding);
+            System.IO.File.WriteAllText(srtPath, processedContent);
+            
+            return true;
+        } catch (err) {
+            Logger.WLog('[subtitleedit-postproc] Pre-processing error for ' + srtPath + ': ' + err);
+            return false;
+        }
+    };
+
     // Parse parameters
     const parseBoolean = (value, fallback = false) => {
         if (typeof value === 'string') {
@@ -173,6 +231,14 @@ function Script(RemoveTextForHI, Encoding, ProcessExistingSrtFiles) {
         Logger.ILog('[subtitleedit-postproc] Processing: ' + System.IO.Path.GetFileName(srtPath));
 
         try {
+            // Pre-process the SRT file to fix RTL issues
+            Logger.ILog('[subtitleedit-postproc] Running pre-processing to strip RTL control characters and fix punctuation...');
+            if (!preprocessSrtFile(srtPath)) {
+                Logger.WLog('[subtitleedit-postproc] Pre-processing failed for: ' + srtPath);
+                failedCount++;
+                continue;
+            }
+            
             const args = buildCommand(srtPath);
             
             // Log the command for debugging
