@@ -1,9 +1,9 @@
 /**
  * @name Video - SubtitleEdit SRT Post-Processing
  * @uid 3f3f5e2f-8g8c-6c56-dh4c-hhe1e7f8h3cg
- * @description Post-processes SRT subtitle files using seconv CLI (SubtitleEdit). Applies professional subtitle standards: merges same timecodes/texts, splits long lines, applies duration limits, redoes casing, and removes formatting. Optionally removes text for hearing impaired.
+ * @description Post-processes SRT subtitle files using seconv CLI (SubtitleEdit). Fixes RTL (right-to-left) text encoding issues, applies professional subtitle standards: merges same timecodes/texts, balances and splits long lines, applies duration limits, and removes formatting. Optionally removes text for hearing impaired.
  * @author natoriousbigg
- * @revision 2
+ * @revision 3
  * @output Subtitle Processed
  * @output No Subtitle Processing Needed
  * @param {bool} RemoveTextForHI Remove text for hearing impaired (brackets, sound effects). Default: false.
@@ -126,14 +126,22 @@ function Script(RemoveTextForHI, Encoding, ProcessExistingSrtFiles) {
         ];
 
         // Mandatory operations (always applied)
+        // 1. RTL/Unicode fixes FIRST - clean the text before any other operations
+        args.push('/FixRtlViaUnicodeChars');
+        args.push('/ReverseRtlStartEnd');
+        args.push('/RemoveUnicodeControlChars');
+        
+        // 2. Merging operations - combine related content
         args.push('/MergeSameTimeCodes');
         args.push('/MergeSameTexts');
-        args.push('/MergeShortLines');
-        args.push('/ReverseRtlStartEnd');
-        args.push('/SplitLongLines');
-        args.push('/ApplyDurationLimits');
-        args.push('/RedoCasing');
+        
+        // 3. Formatting and structure
         args.push('/RemoveFormatting');
+        args.push('/BalanceLines');
+        args.push('/SplitLongLines');
+        
+        // 4. Timing LAST - adjust durations after content is finalized
+        args.push('/ApplyDurationLimits');
 
         // Optional: Remove text for hearing impaired
         if (removeTextForHI) {
