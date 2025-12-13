@@ -115,6 +115,7 @@ function Script(RemoveTextForHI, Encoding, ProcessExistingSrtFiles) {
         const dir = System.IO.Path.GetDirectoryName(srtPath);
         const filename = System.IO.Path.GetFileName(srtPath);
         
+        // Note: Flow.Execute with argumentList handles special characters and escaping automatically
         const args = [
             subtitleEditPath,
             filename,     // File pattern (just the filename)
