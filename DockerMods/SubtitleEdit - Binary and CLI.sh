@@ -57,6 +57,9 @@ if ! dotnet --list-sdks 2>/dev/null | grep -q "8.0"; then
     wget -q https://dot.net/v1/dotnet-install.sh -O "${dotnet_tmp_dir}/dotnet-install.sh"
     bash "${dotnet_tmp_dir}/dotnet-install.sh" -c 8.0 --install-dir /dotnet
     
+    # Add dotnet to PATH
+    export PATH="/dotnet:$PATH"
+    
     rm -rf "${dotnet_tmp_dir}"
     log ".NET 8 SDK installation complete."
 else
@@ -78,7 +81,13 @@ fi
 
 # Build SubtitleEdit CLI
 log "Building SubtitleEdit CLI from source."
-if ! dotnet publish "${build_dir}/subtitleedit-cli/src/se-cli/seconv.csproj" \
+project_file="${build_dir}/subtitleedit-cli/src/se-cli/seconv.csproj"
+if [ ! -f "${project_file}" ]; then
+    log "ERROR: Project file not found at ${project_file}"
+    exit 1
+fi
+
+if ! dotnet publish "${project_file}" \
     -c Release \
     -o "${INSTALL_ROOT}" \
     --self-contained true \
