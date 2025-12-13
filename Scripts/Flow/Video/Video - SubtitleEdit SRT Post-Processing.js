@@ -51,6 +51,7 @@ function Script(FixCommonErrors, RemoveFormatting, RemoveTextForHI, RedoCasing, 
         return -1;
     }
 
+    Flow.AdditionalInfoRecorder("SubtitleEdit", "Initializing...", 1);
     Logger.ILog('[subtitleedit-postproc] Found SubtitleEdit CLI at: ' + subtitleEditPath);
 
     // Find SRT files to process
@@ -109,8 +110,11 @@ function Script(FixCommonErrors, RemoveFormatting, RemoveTextForHI, RedoCasing, 
     // Check if we have any files to process
     if (srtPaths.length === 0) {
         Logger.ILog('[subtitleedit-postproc] No subtitle files to process');
+        Flow.AdditionalInfoRecorder("SubtitleEdit", "No files to process", 1);
         return 2;
     }
+
+    Flow.AdditionalInfoRecorder("SubtitleEdit", "Processing " + srtPaths.length + " subtitle file(s)...", 1);
 
     // Build SubtitleEdit CLI command arguments
     const buildCommand = (srtPath) => {
@@ -149,13 +153,16 @@ function Script(FixCommonErrors, RemoveFormatting, RemoveTextForHI, RedoCasing, 
     let processedCount = 0;
     let failedCount = 0;
 
-    for (const srtPath of srtPaths) {
+    for (let i = 0; i < srtPaths.length; i++) {
+        const srtPath = srtPaths[i];
+        
         if (!System.IO.File.Exists(srtPath)) {
             Logger.WLog('[subtitleedit-postproc] File not found, skipping: ' + srtPath);
             failedCount++;
             continue;
         }
 
+        Flow.AdditionalInfoRecorder("SubtitleEdit", "Processing file " + (i + 1) + "/" + srtPaths.length, 1);
         Logger.ILog('[subtitleedit-postproc] Processing: ' + System.IO.Path.GetFileName(srtPath));
 
         try {
@@ -195,10 +202,13 @@ function Script(FixCommonErrors, RemoveFormatting, RemoveTextForHI, RedoCasing, 
     Logger.ILog('[subtitleedit-postproc] Post-processing complete: ' + processedCount + ' succeeded, ' + failedCount + ' failed out of ' + srtPaths.length + ' total');
 
     if (processedCount > 0) {
+        Flow.AdditionalInfoRecorder("SubtitleEdit", "Complete - " + processedCount + " file(s) processed", 1);
         return 1; // Success
     } else if (failedCount > 0) {
+        Flow.AdditionalInfoRecorder("SubtitleEdit", "Failed - " + failedCount + " error(s)", 1);
         return -1; // Failure
     } else {
+        Flow.AdditionalInfoRecorder("SubtitleEdit", "Complete - No files processed", 1);
         return 2; // No subtitles processed
     }
 }
