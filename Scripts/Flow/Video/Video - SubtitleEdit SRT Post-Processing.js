@@ -1,20 +1,16 @@
 /**
  * @name Video - SubtitleEdit SRT Post-Processing
  * @uid 3f3f5e2f-8g8c-6c56-dh4c-hhe1e7f8h3cg
- * @description Post-processes SRT subtitle files using SubtitleEdit CLI. Fixes common errors, removes formatting, removes HI text, and applies professional subtitle standards.
+ * @description Post-processes SRT subtitle files using seconv CLI (SubtitleEdit). Applies professional subtitle standards: merges same timecodes/texts, splits long lines, applies duration limits, redoes casing, and removes formatting. Optionally removes text for hearing impaired.
  * @author natoriousbigg
  * @revision 2
  * @output Subtitle Processed
  * @output No Subtitle Processing Needed
- * @param {bool} FixCommonErrors Fix common subtitle errors (timing, overlaps, gaps, etc.).
- * @param {bool} RemoveFormatting Remove font tags, color codes, and formatting.
- * @param {bool} RemoveTextForHI Remove text for hearing impaired (brackets, sound effects).
- * @param {bool} RedoCasing Apply smart capitalization rules.
- * @param {bool} SplitLongLines Split long subtitle lines into multiple lines.
+ * @param {bool} RemoveTextForHI Remove text for hearing impaired (brackets, sound effects). Default: false.
  * @param {string} Encoding Output encoding (default: UTF-8). Options: UTF-8, ASCII, etc.
  * @param {bool} ProcessExistingSrtFiles Process all .srt files in the original video folder instead of only Whisper-generated ones.
  */
-function Script(FixCommonErrors, RemoveFormatting, RemoveTextForHI, RedoCasing, SplitLongLines, Encoding, ProcessExistingSrtFiles) {
+function Script(RemoveTextForHI, Encoding, ProcessExistingSrtFiles) {
     // Parse parameters
     const parseBoolean = (value, fallback = false) => {
         if (typeof value === 'string') {
@@ -27,11 +23,7 @@ function Script(FixCommonErrors, RemoveFormatting, RemoveTextForHI, RedoCasing, 
         return typeof value === 'boolean' ? value : !!value || fallback;
     };
 
-    const fixCommonErrors = parseBoolean(FixCommonErrors, true);
-    const removeFormatting = parseBoolean(RemoveFormatting, true);
     const removeTextForHI = parseBoolean(RemoveTextForHI, false);
-    const redoCasing = parseBoolean(RedoCasing, false);
-    const splitLongLines = parseBoolean(SplitLongLines, false);
     
     // Validate and sanitize encoding parameter
     let encoding = (Encoding || 'UTF-8').toString().trim();
@@ -43,8 +35,8 @@ function Script(FixCommonErrors, RemoveFormatting, RemoveTextForHI, RedoCasing, 
     
     const processExisting = parseBoolean(ProcessExistingSrtFiles, false);
 
-    // Detect SubtitleEdit CLI (seconv)
-    const subtitleEditPath = '/usr/local/bin/seconv';
+    // Detect SubtitleEdit CLI (seconv) - check Variables first, then fallback to default path
+    const subtitleEditPath = Variables['seconv'] || Variables['subtitleedit'] || '/usr/local/bin/seconv';
 
     // Verify SubtitleEdit exists
     if (!System.IO.File.Exists(subtitleEditPath)) {
@@ -118,35 +110,37 @@ function Script(FixCommonErrors, RemoveFormatting, RemoveTextForHI, RedoCasing, 
 
     Flow.AdditionalInfoRecorder("SubtitleEdit", "Processing " + srtPaths.length + " subtitle file(s)...", 1);
 
-    // Build SubtitleEdit CLI command arguments (seconv format)
+    // Build seconv CLI command arguments
     const buildCommand = (srtPath) => {
+        const dir = System.IO.Path.GetDirectoryName(srtPath);
+        const filename = System.IO.Path.GetFileName(srtPath);
+        
+        // Note: Flow.Execute with argumentList handles special characters and escaping automatically
         const args = [
             subtitleEditPath,
-            srtPath,  // Input file path
-            'srt'     // Output format (keep as SRT)
+            filename,     // File pattern (just the filename)
+            'subrip',     // Format name (subrip for SRT)
+            '/overwrite', // Overwrite original files
+            '/inputfolder:' + dir,   // Input folder
+            '/outputfolder:' + dir   // Output folder (same as input)
         ];
 
-        // Add options in new seconv format (forward-slash style)
-        if (fixCommonErrors) {
-            args.push('/FixCommonErrors');
-        }
+        // Mandatory operations (always applied)
+        args.push('/MergeSameTimeCodes');
+        args.push('/MergeSameTexts');
+        args.push('/MergeShortLines');
+        args.push('/ReverseRtlStartEnd');
+        args.push('/SplitLongLines');
+        args.push('/ApplyDurationLimits');
+        args.push('/RedoCasing');
+        args.push('/RemoveFormatting');
 
-        if (removeFormatting) {
-            args.push('/RemoveFormatting');
-        }
-
+        // Optional: Remove text for hearing impaired
         if (removeTextForHI) {
             args.push('/RemoveTextForHI');
         }
 
-        if (redoCasing) {
-            args.push('/RedoCasing');
-        }
-
-        if (splitLongLines) {
-            args.push('/SplitLongLines');
-        }
-
+        // Set encoding if not default
         if (encoding && encoding !== 'UTF-8') {
             args.push('/encoding:' + encoding);
         }
