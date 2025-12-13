@@ -179,7 +179,7 @@ function Script(FixCommonErrors, RemoveFormatting, RemoveTextForHI, RedoCasing, 
                 }
                 processedCount++;
             } else {
-                Logger.WLog('[subtitleedit-postproc] SubtitleEdit returned exit code ' + result.exitCode);
+                Logger.WLog('[subtitleedit-postproc] Failed to process ' + srtPath + ' - exit code: ' + result.exitCode);
                 if (result.standardError) {
                     Logger.WLog('[subtitleedit-postproc] Error: ' + result.standardError);
                 }
