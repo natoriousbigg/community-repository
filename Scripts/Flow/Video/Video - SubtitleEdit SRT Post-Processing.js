@@ -23,6 +23,9 @@ function Script(RemoveTextForHI, Encoding, ProcessExistingSrtFiles) {
             // U+2066 (LTR Isolate), U+2067 (RTL Isolate), U+2068 (First Strong Isolate), U+2069 (Pop Directional Isolate)
             content = content.replace(/[\u200E\u200F\u202A\u202B\u202C\u202D\u202E\u2066\u2067\u2068\u2069]/g, '');
             
+            // Detect line ending style to preserve it
+            const lineEnding = content.includes('\r\n') ? '\r\n' : '\n';
+            
             // Fix punctuation positioning - split by lines and process each
             const lines = content.split(/\r?\n/);
             const processedLines = [];
@@ -41,19 +44,22 @@ function Script(RemoveTextForHI, Encoding, ProcessExistingSrtFiles) {
                 }
                 
                 // Fix leading punctuation: move it to the end
-                // Pattern: Line starts with `. ` or `? ` or `! ` or `, ` followed by text
-                const punctMatch = line.match(/^([.?!,])\s+(.+)$/);
+                // Pattern: Line starts with `. ` or `? ` or `! ` or `, ` followed by text (or empty)
+                const punctMatch = line.match(/^([.?!,])\s+(.*)$/);
                 if (punctMatch) {
                     const punct = punctMatch[1];
                     const text = punctMatch[2];
-                    line = text + punct;
+                    // Only transform if there's actual text after the punctuation
+                    if (text.length > 0) {
+                        line = text + punct;
+                    }
                 }
                 
                 processedLines.push(line);
             }
             
-            // Write the cleaned content back to the file
-            const processedContent = processedLines.join('\n');
+            // Write the cleaned content back to the file, preserving line endings
+            const processedContent = processedLines.join(lineEnding);
             System.IO.File.WriteAllText(srtPath, processedContent);
             
             return true;
