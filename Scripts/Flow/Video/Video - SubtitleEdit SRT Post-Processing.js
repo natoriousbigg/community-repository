@@ -3,17 +3,18 @@
  * @uid 3f3f5e2f-8g8c-6c56-dh4c-hhe1e7f8h3cg
  * @description Post-processes SRT subtitle files using SubtitleEdit CLI. Fixes common errors, removes formatting, removes HI text, and applies professional subtitle standards.
  * @author natoriousbigg
- * @revision 1
+ * @revision 2
  * @output Subtitle Processed
  * @output No Subtitle Processing Needed
  * @param {bool} FixCommonErrors Fix common subtitle errors (timing, overlaps, gaps, etc.).
  * @param {bool} RemoveFormatting Remove font tags, color codes, and formatting.
  * @param {bool} RemoveTextForHI Remove text for hearing impaired (brackets, sound effects).
  * @param {bool} RedoCasing Apply smart capitalization rules.
+ * @param {bool} SplitLongLines Split long subtitle lines into multiple lines.
  * @param {string} Encoding Output encoding (default: UTF-8). Options: UTF-8, ASCII, etc.
  * @param {bool} ProcessExistingSrtFiles Process all .srt files in the original video folder instead of only Whisper-generated ones.
  */
-function Script(FixCommonErrors, RemoveFormatting, RemoveTextForHI, RedoCasing, Encoding, ProcessExistingSrtFiles) {
+function Script(FixCommonErrors, RemoveFormatting, RemoveTextForHI, RedoCasing, SplitLongLines, Encoding, ProcessExistingSrtFiles) {
     // Parse parameters
     const parseBoolean = (value, fallback = false) => {
         if (typeof value === 'string') {
@@ -30,23 +31,16 @@ function Script(FixCommonErrors, RemoveFormatting, RemoveTextForHI, RedoCasing, 
     const removeFormatting = parseBoolean(RemoveFormatting, true);
     const removeTextForHI = parseBoolean(RemoveTextForHI, false);
     const redoCasing = parseBoolean(RedoCasing, false);
+    const splitLongLines = parseBoolean(SplitLongLines, false);
     const encoding = (Encoding || 'UTF-8').toString().trim();
     const processExisting = parseBoolean(ProcessExistingSrtFiles, false);
 
-    // Detect SubtitleEdit CLI
-    let subtitleEditPath = '/usr/local/bin/subtitleedit';
-    
-    // Check if custom path is set in Variables
-    if (Variables['subtitleedit']) {
-        const customPath = Variables['subtitleedit'].toString().trim();
-        if (customPath && System.IO.File.Exists(customPath)) {
-            subtitleEditPath = customPath;
-        }
-    }
+    // Detect SubtitleEdit CLI (seconv)
+    const subtitleEditPath = '/usr/local/bin/seconv';
 
     // Verify SubtitleEdit exists
     if (!System.IO.File.Exists(subtitleEditPath)) {
-        Logger.ELog('[subtitleedit-postproc] SubtitleEdit CLI not found at ' + subtitleEditPath);
+        Logger.ELog('[subtitleedit-postproc] SubtitleEdit CLI (seconv) not found at ' + subtitleEditPath);
         Logger.ELog('[subtitleedit-postproc] Please install the SubtitleEdit DockerMod first.');
         return -1;
     }
@@ -116,35 +110,38 @@ function Script(FixCommonErrors, RemoveFormatting, RemoveTextForHI, RedoCasing, 
 
     Flow.AdditionalInfoRecorder("SubtitleEdit", "Processing " + srtPaths.length + " subtitle file(s)...", 1);
 
-    // Build SubtitleEdit CLI command arguments
+    // Build SubtitleEdit CLI command arguments (seconv format)
     const buildCommand = (srtPath) => {
         const args = [
-            subtitleEditPath
+            subtitleEditPath,
+            srtPath,  // Input file pattern
+            'srt'     // Output format (keep as SRT)
         ];
 
+        // Add options in new seconv format (forward-slash style)
         if (fixCommonErrors) {
-            args.push('--fix-common-errors');
+            args.push('/FixCommonErrors');
         }
 
         if (removeFormatting) {
-            args.push('--remove-formatting');
+            args.push('/RemoveFormatting');
         }
 
         if (removeTextForHI) {
-            args.push('--remove-text-for-hi');
+            args.push('/RemoveTextForHI');
         }
 
         if (redoCasing) {
-            args.push('--redo-casing');
+            args.push('/RedoCasing');
+        }
+
+        if (splitLongLines) {
+            args.push('/SplitLongLines');
         }
 
         if (encoding && encoding !== 'UTF-8') {
-            args.push('--encoding');
-            args.push(encoding);
+            args.push('/encoding:' + encoding);
         }
-
-        // Input file must be last
-        args.push(srtPath);
 
         return args;
     };

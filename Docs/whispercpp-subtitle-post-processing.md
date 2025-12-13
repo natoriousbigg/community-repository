@@ -54,12 +54,13 @@ Add both scripts to your FileFlows workflow in sequence:
 - **RemoveFormatting**: ✓ Recommended - Removes font tags, colors, and HTML formatting
 - **RemoveTextForHI**: Optional - Removes hearing impaired text (brackets, sound effects)
 - **RedoCasing**: Optional - Applies smart capitalization rules
+- **SplitLongLines**: Optional - Splits long subtitle lines into multiple lines
 - **Encoding**: UTF-8 (default)
 - **ProcessExistingSrtFiles**: Disable to process only Whisper-generated files
 
 ## Available SubtitleEdit CLI Options
 
-### Fix Common Errors (`--fix-common-errors`)
+### Fix Common Errors (`/FixCommonErrors`)
 Automatically corrects:
 - Subtitle timing overlaps
 - Gaps between subtitles that are too large or too small
@@ -67,25 +68,31 @@ Automatically corrects:
 - Line length issues
 - Invalid timestamps
 
-### Remove Formatting (`--remove-formatting`)
+### Remove Formatting (`/RemoveFormatting`)
 Removes:
 - HTML tags (`<b>`, `<i>`, `<u>`, `<font>`)
 - Color codes
 - Font specifications
 - Style attributes
 
-### Remove Text for Hearing Impaired (`--remove-text-for-hi`)
+### Remove Text for Hearing Impaired (`/RemoveTextForHI`)
 Removes:
 - Text in brackets like `[Music]`, `[Door closes]`
 - Speaker names in parentheses
 - Sound effect descriptions
 - Background music indicators
 
-### Redo Casing (`--redo-casing`)
+### Redo Casing (`/RedoCasing`)
 Applies smart capitalization:
 - Proper sentence capitalization
 - Name capitalization
 - Preserves intentional all-caps (like acronyms)
+
+### Split Long Lines (`/SplitLongLines`)
+Splits long subtitle lines:
+- Breaks lines that exceed recommended character limits
+- Maintains readability and subtitle standards
+- Splits at natural break points
 
 ## Comparison: Old vs New Approach
 
@@ -127,12 +134,6 @@ Enable `ProcessExistingSrtFiles` to process all SRT files in the video directory
 - video.en.srt (will be processed)
 - video.es.srt (will be processed)
 - video.ja.srt (will be processed)
-```
-
-### Custom SubtitleEdit Path
-Set the `subtitleedit` variable in FileFlows to use a custom binary location:
-```javascript
-Variables['subtitleedit'] = '/custom/path/to/se-cli';
 ```
 
 ### Chaining Multiple Processing Steps
@@ -189,6 +190,7 @@ SubtitleEdit Script:
 - RemoveFormatting: true
 - RemoveTextForHI: false
 - RedoCasing: false
+- SplitLongLines: false
 ```
 
 The new approach provides more control and better results with professional subtitle editing tools.
