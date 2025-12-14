@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files using optimized models (ggml-distil-large-v3.5 for English, ggml-large-v3-turbo for other languages), with optional translation and flexible subtitle placement.
  * @author Gas-X-Extra-Strength
- * @revision 1
+ * @revision 3
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English.
@@ -14,8 +14,10 @@
  * @param {bool} FixAudioLanguages Update audio track language tags using detected languages before transcription.
  * @param {('OrgDir'|'WorkingDir')} SubtitleSaveDir Directory to save subtitles to. OrgDir - Original Directory. WorkingDir - Fileflows working directory.
  * @param {bool} DisableVAD Disable Voice Activity Detection (VAD) even if the model is available.
+ * @param {bool} DisableSubtitlePostProcessing Disable automatic subtitle post-processing after transcription.
+ * @param {bool} RemoveTextForHI Remove text for hearing impaired (brackets, sound effects).
  */
-function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubtitles = false, DebugMode, NoGpu, FixAudioLanguages, SubtitleSaveDir, DisableVAD) {
+function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubtitles = false, DebugMode, NoGpu, FixAudioLanguages, SubtitleSaveDir, DisableVAD, DisableSubtitlePostProcessing, RemoveTextForHI) {
     const vi = Variables.vi?.VideoInfo;
     const filePath = Variables.file?.FullName;
 
@@ -51,6 +53,8 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
     const disableGpu = parseBoolean(typeof Variables['NoGpu'] !== 'undefined' ? Variables['NoGpu'] : NoGpu, false);
     const fixAudioLanguages = parseBoolean(typeof Variables['FixAudioLanguages'] !== 'undefined' ? Variables['FixAudioLanguages'] : FixAudioLanguages, false);
     const disableVAD = parseBoolean(typeof Variables['DisableVAD'] !== 'undefined' ? Variables['DisableVAD'] : DisableVAD, false);
+    const disableSubtitlePostProcessing = parseBoolean(typeof Variables['DisableSubtitlePostProcessing'] !== 'undefined' ? Variables['DisableSubtitlePostProcessing'] : DisableSubtitlePostProcessing, false);
+    const removeTextForHI = parseBoolean(typeof Variables['RemoveTextForHI'] !== 'undefined' ? Variables['RemoveTextForHI'] : RemoveTextForHI, false);
 
     if (!keepOriginal && !translateToEnglish) {
         Logger.ELog('[whisper-sub] Whisper.cpp Aborted - Neither original Language or English translation were selected.');
@@ -109,6 +113,9 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
     ];
 
     const whisperCli = whisperOverride || whisperCandidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || whisperCandidates[whisperCandidates.length - 1];
+
+    // Detect SubtitleEdit CLI (seconv)
+    const seconvPath = Variables['seconv'] || Variables['subtitleedit'] || '/usr/local/bin/seconv';
 
     const installRoot = '/app/common/whispercpp';
     const modelDir = System.IO.Path.Combine(installRoot, 'models');
@@ -458,6 +465,45 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         return process;
     };
 
+    const postProcessSubtitle = (srtPath) => {
+        if (!System.IO.File.Exists(seconvPath)) {
+            Logger.WLog('[whisper-sub] seconv not found, skipping post-processing');
+            return false;
+        }
+        
+        const dir = System.IO.Path.GetDirectoryName(srtPath);
+        const filename = System.IO.Path.GetFileName(srtPath);
+        
+        const args = [
+            filename,
+            'subrip',
+            '/overwrite',
+            '/inputfolder:' + dir,
+            '/outputfolder:' + dir,
+            '/FixRtlViaUnicodeChars',
+            '/ReverseRtlStartEnd',
+            '/RemoveUnicodeControlChars',
+            '/MergeSameTimeCodes',
+            '/MergeSameTexts',
+            '/RemoveFormatting',
+            '/BalanceLines',
+            '/SplitLongLines',
+            '/ApplyDurationLimits'
+        ];
+        
+        if (removeTextForHI) {
+            args.push('/RemoveTextForHI');
+        }
+        
+        const result = Flow.Execute({
+            command: seconvPath,
+            argumentList: args,
+            logOutput: false
+        });
+        
+        return result.exitCode === 0;
+    };
+
     const detectedLanguages = new Map();
 
     for (let i = 0; i < audioStreams.length; i++) {
@@ -597,6 +643,13 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             processedLanguages.add(langForName);
             Logger.ILog(`[whisper-sub] Created subtitle for track ${i} -> ${targetSrt}.`);
             createdSubtitles.push(targetSrt);
+            
+            if (!disableSubtitlePostProcessing) {
+                Logger.ILog('[whisper-sub] Post-processing subtitle: ' + targetSrt);
+                if (!postProcessSubtitle(targetSrt)) {
+                    Logger.WLog('[whisper-sub] Post-processing failed for: ' + targetSrt);
+                }
+            }
         }
 
         if (translateToEnglish) {
@@ -638,6 +691,13 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     processedLanguages.add('en');
                     created = true;
                     createdSubtitles.push(englishSrt);
+                    
+                    if (!disableSubtitlePostProcessing) {
+                        Logger.ILog('[whisper-sub] Post-processing subtitle: ' + englishSrt);
+                        if (!postProcessSubtitle(englishSrt)) {
+                            Logger.WLog('[whisper-sub] Post-processing failed for: ' + englishSrt);
+                        }
+                    }
                 }
 
                 continue;
@@ -674,6 +734,13 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
             Logger.ILog(`[whisper-sub] Created translated subtitle for track ${i} -> ${translatedSrt}.`);
             createdSubtitles.push(translatedSrt);
+            
+            if (!disableSubtitlePostProcessing) {
+                Logger.ILog('[whisper-sub] Post-processing subtitle: ' + translatedSrt);
+                if (!postProcessSubtitle(translatedSrt)) {
+                    Logger.WLog('[whisper-sub] Post-processing failed for: ' + translatedSrt);
+                }
+            }
 
             if (!keepOriginal) {
                 processedLanguages.add(translatedDetected || langMeta || 'auto');
