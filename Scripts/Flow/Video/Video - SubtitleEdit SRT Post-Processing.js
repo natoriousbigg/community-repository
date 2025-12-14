@@ -28,8 +28,8 @@ function Script(RemoveTextForHI, Encoding, SubtitleScanDir) {
                 if (/^\d+$/.test(line.trim()) || /-->/.test(line)) {
                     return line;
                 }
-                // Match leading punctuation followed by space and text
-                const match = line.match(/^([.?!,])\s+(.+)$/);
+                // Match leading punctuation followed by optional space and text
+                const match = line.match(/^([.?!,])\s*(.+)$/);
                 if (match) {
                     return match[2] + match[1];
                 }
