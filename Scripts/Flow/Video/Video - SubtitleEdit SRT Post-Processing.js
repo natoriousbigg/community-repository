@@ -3,13 +3,14 @@
  * @uid 3f3f5e2f-8g8c-6c56-dh4c-hhe1e7f8h3cg
  * @description Post-processes SRT subtitle files using seconv CLI (SubtitleEdit). Automatically scans for .srt files matching the video basename. Applies professional subtitle standards: fixes RTL issues, merges same timecodes/texts, splits long lines, applies duration limits, removes formatting.
  * @author natoriousbigg
- * @revision 6
+ * @revision 7
  * @output Subtitle Processed
  * @output No Subtitle Processing Needed
  * @param {bool} RemoveTextForHI Remove text for hearing impaired (brackets, sound effects). Default: false.
  * @param {string} Encoding Output encoding (default: UTF-8). Options: UTF-8, ASCII, etc.
+ * @param {('OrgDir'|'WorkingDir')} SubtitleScanDir Directory to scan for subtitles. OrgDir - Original Directory. WorkingDir - FileFlows working directory.
  */
-function Script(RemoveTextForHI, Encoding) {
+function Script(RemoveTextForHI, Encoding, SubtitleScanDir) {
     const preProcessRtlPunctuation = (srtPath) => {
         try {
             let content = System.IO.File.ReadAllText(srtPath);
@@ -78,23 +79,47 @@ function Script(RemoveTextForHI, Encoding) {
     Flow.AdditionalInfoRecorder("SubtitleEdit", "Initializing...", 1);
     Logger.ILog('[subtitleedit-postproc] Found SubtitleEdit CLI at: ' + subtitleEditPath);
 
-    // Find SRT files to process - always scan video directory
-    let srtPaths = [];
+    // Try multiple methods to get the file path
+    let workingFile = null;
+
+    // Method 1: Try Variables['file'].FullName
     const fileVar = Variables['file'];
-    const workingFile = fileVar ? fileVar.FullName : null;
+    if (fileVar && fileVar.FullName) {
+        workingFile = fileVar.FullName;
+    }
+
+    // Method 2: Try Variables.file.FullName (alternative syntax)
+    if (!workingFile && Variables.file && Variables.file.FullName) {
+        workingFile = Variables.file.FullName;
+    }
+
+    // Method 3: Try Flow.WorkingFile
+    if (!workingFile && Flow.WorkingFile) {
+        workingFile = Flow.WorkingFile;
+    }
 
     if (!workingFile) {
         Logger.ELog('[subtitleedit-postproc] Cannot process SRT files: working file path not available');
         return -1;
     }
 
+    // Determine which directory to scan based on SubtitleScanDir parameter
+    const saveDirRaw = (typeof Variables['SubtitleScanDir'] !== 'undefined' ? Variables['SubtitleScanDir'] : SubtitleScanDir || 'OrgDir').toString().trim();
+    const saveDirNormalized = saveDirRaw.toLowerCase();
+    const saveLocation = saveDirNormalized === 'workingdir' ? 'WorkingDir' : 'OrgDir';
+
+    const workingDir = Flow.TempPath || System.IO.Path.GetTempPath();
     const originalDir = System.IO.Path.GetDirectoryName(workingFile);
+    const scanDir = saveLocation === 'WorkingDir' ? workingDir : originalDir;
     const baseName = System.IO.Path.GetFileNameWithoutExtension(workingFile);
 
-    Logger.ILog('[subtitleedit-postproc] Searching for .srt files in: ' + originalDir);
+    Logger.ILog('[subtitleedit-postproc] Searching for .srt files in: ' + scanDir);
+
+    // Find SRT files to process
+    let srtPaths = [];
 
     try {
-        const allSrtFiles = System.IO.Directory.GetFiles(originalDir, '*.srt');
+        const allSrtFiles = System.IO.Directory.GetFiles(scanDir, '*.srt');
         
         for (const srtFile of allSrtFiles) {
             const srtBaseName = System.IO.Path.GetFileNameWithoutExtension(srtFile);
