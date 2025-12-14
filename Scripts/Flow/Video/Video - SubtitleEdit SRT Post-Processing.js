@@ -88,7 +88,7 @@ function Script(RemoveTextForHI, Encoding, SubtitleScanDir) {
         workingFile = fileVar.FullName;
     }
 
-    // Method 2: Try Variables.file?.FullName (if supported)
+    // Method 2: Try Variables.file.FullName (alternative syntax)
     if (!workingFile && Variables.file && Variables.file.FullName) {
         workingFile = Variables.file.FullName;
     }
