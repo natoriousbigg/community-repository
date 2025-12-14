@@ -484,10 +484,43 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         return process;
     };
 
+    const preProcessRtlPunctuation = (srtPath) => {
+        try {
+            let content = System.IO.File.ReadAllText(srtPath);
+            
+            // Remove RTL/LTR Unicode control characters
+            content = content.replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '');
+            
+            // Fix punctuation at start of lines - move to end
+            const lines = content.split('\n');
+            const fixedLines = lines.map(line => {
+                // Skip timestamp lines and sequence numbers
+                if (/^\d+$/.test(line.trim()) || /-->/.test(line)) {
+                    return line;
+                }
+                // Match leading punctuation followed by space and text
+                const match = line.match(/^([.?!,])\s+(.+)$/);
+                if (match) {
+                    return match[2] + match[1];
+                }
+                return line;
+            });
+            
+            System.IO.File.WriteAllText(srtPath, fixedLines.join('\n'));
+            return true;
+        } catch (err) {
+            Logger.WLog('[whisper-sub] RTL pre-processing failed: ' + err);
+            return false;
+        }
+    };
+
     const postProcessSubtitle = (srtPath) => {
         if (!hasSeconv) {
             return false;
         }
+        
+        // Pre-process RTL punctuation before running seconv
+        preProcessRtlPunctuation(srtPath);
         
         const dir = System.IO.Path.GetDirectoryName(srtPath);
         const filename = System.IO.Path.GetFileName(srtPath);
