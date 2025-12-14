@@ -10,60 +10,35 @@
  * @param {string} Encoding Output encoding (default: UTF-8). Options: UTF-8, ASCII, etc.
  */
 function Script(RemoveTextForHI, Encoding) {
-    // Pre-processing function to fix RTL issues
-    const preprocessSrtFile = (srtPath) => {
+    const preProcessRtlPunctuation = (srtPath) => {
         try {
-            // Read the entire SRT file
             let content = System.IO.File.ReadAllText(srtPath);
             
-            // Strip RTL/LTR Unicode control characters
-            // U+200E (LTR Mark), U+200F (RTL Mark), U+202A (LTR Embedding), U+202B (RTL Embedding),
-            // U+202C (Pop Directional Formatting), U+202D (LTR Override), U+202E (RTL Override),
-            // U+2066 (LTR Isolate), U+2067 (RTL Isolate), U+2068 (First Strong Isolate), U+2069 (Pop Directional Isolate)
-            content = content.replace(/[\u200E\u200F\u202A\u202B\u202C\u202D\u202E\u2066\u2067\u2068\u2069]/g, '');
+            // Remove RTL/LTR Unicode control characters
+            content = content.replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '');
             
             // Detect line ending style to preserve it
             const lineEnding = content.includes('\r\n') ? '\r\n' : '\n';
             
-            // Fix punctuation positioning - split by lines and process each
+            // Fix punctuation at start of lines - move to end
             const lines = content.split(/\r?\n/);
-            const processedLines = [];
-            
-            for (let i = 0; i < lines.length; i++) {
-                let line = lines[i];
-                
-                // Skip timestamp lines (e.g., "00:00:01,000 --> 00:00:03,000")
-                // Skip sequence number lines (just digits)
-                // Skip empty lines
-                if (/^\d{2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{2}:\d{2}:\d{2},\d{3}$/.test(line) ||
-                    /^\d+$/.test(line) ||
-                    line.trim() === '') {
-                    processedLines.push(line);
-                    continue;
+            const fixedLines = lines.map(line => {
+                // Skip timestamp lines and sequence numbers
+                if (/^\d+$/.test(line.trim()) || /-->/.test(line)) {
+                    return line;
                 }
-                
-                // Fix leading punctuation: move it to the end
-                // Pattern: Line starts with `. ` or `? ` or `! ` or `, ` followed by text (or empty)
-                const punctMatch = line.match(/^([.?!,])\s+(.*)$/);
-                if (punctMatch) {
-                    const punct = punctMatch[1];
-                    const text = punctMatch[2];
-                    // Only transform if there's actual text after the punctuation
-                    if (text.length > 0) {
-                        line = text + punct;
-                    }
+                // Match leading punctuation followed by space and text
+                const match = line.match(/^([.?!,])\s+(.+)$/);
+                if (match) {
+                    return match[2] + match[1];
                 }
-                
-                processedLines.push(line);
-            }
+                return line;
+            });
             
-            // Write the cleaned content back to the file, preserving line endings
-            const processedContent = processedLines.join(lineEnding);
-            System.IO.File.WriteAllText(srtPath, processedContent);
-            
+            System.IO.File.WriteAllText(srtPath, fixedLines.join(lineEnding));
             return true;
         } catch (err) {
-            Logger.WLog('[subtitleedit-postproc] Pre-processing error for ' + srtPath + ': ' + err);
+            Logger.WLog('[subtitleedit-postproc] RTL pre-processing failed: ' + err);
             return false;
         }
     };
@@ -213,13 +188,9 @@ function Script(RemoveTextForHI, Encoding) {
         Logger.ILog('[subtitleedit-postproc] Processing: ' + System.IO.Path.GetFileName(srtPath));
 
         try {
-            // Pre-process the SRT file to fix RTL issues
-            Logger.ILog('[subtitleedit-postproc] Running pre-processing to strip RTL control characters and fix punctuation...');
-            if (!preprocessSrtFile(srtPath)) {
-                Logger.WLog('[subtitleedit-postproc] Pre-processing failed for: ' + srtPath);
-                failedCount++;
-                continue;
-            }
+            // Pre-process the SRT file to fix RTL punctuation issues
+            Logger.ILog('[subtitleedit-postproc] Pre-processing RTL punctuation: ' + srtPath);
+            preProcessRtlPunctuation(srtPath);
             
             const args = buildCommand(srtPath);
             
