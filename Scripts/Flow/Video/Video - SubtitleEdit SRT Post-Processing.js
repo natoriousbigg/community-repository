@@ -17,8 +17,11 @@ function Script(RemoveTextForHI, Encoding) {
             // Remove RTL/LTR Unicode control characters
             content = content.replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '');
             
+            // Detect line ending style to preserve it
+            const lineEnding = content.includes('\r\n') ? '\r\n' : '\n';
+            
             // Fix punctuation at start of lines - move to end
-            const lines = content.split('\n');
+            const lines = content.split(/\r?\n/);
             const fixedLines = lines.map(line => {
                 // Skip timestamp lines and sequence numbers
                 if (/^\d+$/.test(line.trim()) || /-->/.test(line)) {
@@ -32,7 +35,7 @@ function Script(RemoveTextForHI, Encoding) {
                 return line;
             });
             
-            System.IO.File.WriteAllText(srtPath, fixedLines.join('\n'));
+            System.IO.File.WriteAllText(srtPath, fixedLines.join(lineEnding));
             return true;
         } catch (err) {
             Logger.WLog('[subtitleedit-postproc] RTL pre-processing failed: ' + err);
