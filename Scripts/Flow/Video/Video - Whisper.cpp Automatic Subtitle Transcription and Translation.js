@@ -123,7 +123,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         '/app/common/subtitleedit/seconv'
     ];
     const seconvPath = seconvOverride || seconvCandidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || '';
-    const hasSeconv = seconvPath && System.IO.File.Exists(seconvPath);
+    const hasSeconv = !!seconvPath;
 
     const installRoot = '/app/common/whispercpp';
     const modelDir = System.IO.Path.Combine(installRoot, 'models');
