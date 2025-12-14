@@ -1,16 +1,15 @@
 /**
  * @name Video - SubtitleEdit SRT Post-Processing
  * @uid 3f3f5e2f-8g8c-6c56-dh4c-hhe1e7f8h3cg
- * @description Post-processes SRT subtitle files using seconv CLI (SubtitleEdit). Includes pre-processing to strip RTL/LTR Unicode control characters and fix leading punctuation positioning. Fixes RTL (right-to-left) text encoding issues, applies professional subtitle standards: merges same timecodes/texts, balances and splits long lines, applies duration limits, and removes formatting. Optionally removes text for hearing impaired.
+ * @description Post-processes SRT subtitle files using seconv CLI (SubtitleEdit). Automatically scans for .srt files matching the video basename. Applies professional subtitle standards: fixes RTL issues, merges same timecodes/texts, splits long lines, applies duration limits, removes formatting.
  * @author natoriousbigg
- * @revision 5
+ * @revision 6
  * @output Subtitle Processed
  * @output No Subtitle Processing Needed
  * @param {bool} RemoveTextForHI Remove text for hearing impaired (brackets, sound effects). Default: false.
  * @param {string} Encoding Output encoding (default: UTF-8). Options: UTF-8, ASCII, etc.
- * @param {bool} ProcessExistingSrtFiles Process all .srt files in the original video folder instead of only Whisper-generated ones.
  */
-function Script(RemoveTextForHI, Encoding, ProcessExistingSrtFiles) {
+function Script(RemoveTextForHI, Encoding) {
     // Pre-processing function to fix RTL issues
     const preprocessSrtFile = (srtPath) => {
         try {
@@ -90,8 +89,6 @@ function Script(RemoveTextForHI, Encoding, ProcessExistingSrtFiles) {
         Logger.WLog('[subtitleedit-postproc] Invalid encoding value: ' + encoding + ', defaulting to UTF-8');
         encoding = 'UTF-8';
     }
-    
-    const processExisting = parseBoolean(ProcessExistingSrtFiles, false);
 
     // Detect SubtitleEdit CLI (seconv) - check Variables first, then fallback to default path
     const subtitleEditPath = Variables['seconv'] || Variables['subtitleedit'] || '/usr/local/bin/seconv';
@@ -106,58 +103,42 @@ function Script(RemoveTextForHI, Encoding, ProcessExistingSrtFiles) {
     Flow.AdditionalInfoRecorder("SubtitleEdit", "Initializing...", 1);
     Logger.ILog('[subtitleedit-postproc] Found SubtitleEdit CLI at: ' + subtitleEditPath);
 
-    // Find SRT files to process
+    // Find SRT files to process - always scan video directory
     let srtPaths = [];
-    
-    if (processExisting) {
-        // Process all .srt files in the original video folder
-        const fileVar = Variables['file'];
-        const workingFile = fileVar ? fileVar.FullName : null;
+    const fileVar = Variables['file'];
+    const workingFile = fileVar ? fileVar.FullName : null;
+
+    if (!workingFile) {
+        Logger.ELog('[subtitleedit-postproc] Cannot process SRT files: working file path not available');
+        return -1;
+    }
+
+    const originalDir = System.IO.Path.GetDirectoryName(workingFile);
+    const baseName = System.IO.Path.GetFileNameWithoutExtension(workingFile);
+
+    Logger.ILog('[subtitleedit-postproc] Searching for .srt files in: ' + originalDir);
+
+    try {
+        const allSrtFiles = System.IO.Directory.GetFiles(originalDir, '*.srt');
         
-        if (!workingFile) {
-            Logger.ELog('[subtitleedit-postproc] Cannot process existing SRT files: working file path not available');
-            return -1;
-        }
-        
-        const originalDir = System.IO.Path.GetDirectoryName(workingFile);
-        const baseName = System.IO.Path.GetFileNameWithoutExtension(workingFile);
-        
-        Logger.ILog('[subtitleedit-postproc] Searching for .srt files in: ' + originalDir);
-        
-        try {
-            const allSrtFiles = System.IO.Directory.GetFiles(originalDir, '*.srt');
-            
-            for (const srtFile of allSrtFiles) {
-                const srtBaseName = System.IO.Path.GetFileNameWithoutExtension(srtFile);
-                // Check if it matches: basename.srt or basename.xx.srt (where xx is language code)
-                if (srtBaseName === baseName) {
+        for (const srtFile of allSrtFiles) {
+            const srtBaseName = System.IO.Path.GetFileNameWithoutExtension(srtFile);
+            // Check if it matches: basename.srt or basename.xx.srt (where xx is language code)
+            if (srtBaseName === baseName) {
+                srtPaths.push(srtFile);
+            } else if (srtBaseName.startsWith(baseName + '.')) {
+                const suffix = srtBaseName.substring(baseName.length + 1);
+                // Match language codes (2-3 letters) or language.forced pattern
+                if (/^[a-z]{2,3}$/i.test(suffix) || /^[a-z]{2,3}\.forced$/i.test(suffix)) {
                     srtPaths.push(srtFile);
-                } else if (srtBaseName.startsWith(baseName + '.')) {
-                    const suffix = srtBaseName.substring(baseName.length + 1);
-                    if (/^[a-z]{2,3}$/i.test(suffix)) {
-                        srtPaths.push(srtFile);
-                    }
                 }
             }
-            
-            Logger.ILog('[subtitleedit-postproc] Found ' + srtPaths.length + ' .srt file(s) to process');
-        } catch (err) {
-            Logger.ELog('[subtitleedit-postproc] Error scanning for SRT files: ' + err);
-            return -1;
-        }
-    } else {
-        // Use Whisper-generated subtitles from Variables.CreatedSubtitlePaths
-        const createdPaths = Variables['CreatedSubtitlePaths'];
-        
-        if (!createdPaths) {
-            Logger.ILog('[subtitleedit-postproc] No subtitles found in Variables.CreatedSubtitlePaths');
-            return 2;
         }
         
-        // Split pipe-separated paths
-        srtPaths = createdPaths.toString().split('|').map(p => p.trim()).filter(p => p.length > 0);
-        
-        Logger.ILog('[subtitleedit-postproc] Processing ' + srtPaths.length + ' Whisper-generated subtitle(s)');
+        Logger.ILog('[subtitleedit-postproc] Found ' + srtPaths.length + ' .srt file(s) to process');
+    } catch (err) {
+        Logger.ELog('[subtitleedit-postproc] Error scanning for SRT files: ' + err);
+        return -1;
     }
 
     // Check if we have any files to process
