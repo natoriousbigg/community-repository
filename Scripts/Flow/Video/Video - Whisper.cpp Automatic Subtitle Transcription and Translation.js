@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files using optimized models (ggml-distil-large-v3.5 for English, ggml-large-v3-turbo for other languages), with optional translation and flexible subtitle placement.
  * @author Gas-X-Extra-Strength
- * @revision 2
+ * @revision 1
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English.
@@ -16,8 +16,8 @@
  * @param {bool} DisableVAD Disable Voice Activity Detection (VAD) even if the model is available.
  */
 function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubtitles = false, DebugMode, NoGpu, FixAudioLanguages, SubtitleSaveDir, DisableVAD) {
-    const vi = Variables['vi']?.VideoInfo;
-    const filePath = Variables['file']?.FullName;
+    const vi = Variables.vi?.VideoInfo;
+    const filePath = Variables.file?.FullName;
 
     if (!vi || !filePath) {
         Logger.ELog('[whisper-sub] Missing video info or working file.');
@@ -70,7 +70,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         return (iso1 || iso2 || trimmed).toLowerCase();
     };
 
-    const commonPath = ((Variables['common'] || System.Environment.GetEnvironmentVariable('common') || '/app/common').toString().trim() || '/app/common').replace(/[\\/]+$/, '');
+    const commonPath = ((Variables.common || System.Environment.GetEnvironmentVariable('common') || '/app/common').toString().trim() || '/app/common').replace(/[\\/]+$/, '');
     const ffmpegOverride = (Variables['ffmpeg8'] || '').toString().trim();
     const defaultFfmpeg = System.IO.Path.Combine(commonPath, 'ffmpeg-static', 'ffmpeg');
     const legacyFfmpeg = System.IO.Path.Combine(commonPath, 'ffmpeg-static', 'FFMPEG');
@@ -254,7 +254,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
     const processedLanguages = new Set();
     const existingSubtitleLanguages = new Set();
-    const ffModel = Variables['FfmpegBuilderModel'];
+    const ffModel = Variables.FfmpegBuilderModel;
     const createdSubtitles = [];
 
     const subtitleStreams = vi.SubtitleStreams || vi.Subtitles || vi.SubtitleTracks || [];
@@ -690,7 +690,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
 
     // Store created subtitle paths for downstream processing
     if (createdSubtitles.length > 0) {
-        Variables['CreatedSubtitlePaths'] = createdSubtitles.join('|');
+        Variables.CreatedSubtitlePaths = createdSubtitles.join('|');
         Logger.ILog(`[whisper-sub] Created ${createdSubtitles.length} subtitle file(s)`);
     }
 
