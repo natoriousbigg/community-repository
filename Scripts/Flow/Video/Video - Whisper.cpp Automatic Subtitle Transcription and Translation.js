@@ -115,7 +115,15 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
     const whisperCli = whisperOverride || whisperCandidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || whisperCandidates[whisperCandidates.length - 1];
 
     // Detect SubtitleEdit CLI (seconv)
-    const seconvPath = Variables['seconv'] || Variables['subtitleedit'] || '/usr/local/bin/seconv';
+    const seconvOverride = (Variables['seconv'] || Variables['subtitleedit'] || '').toString().trim();
+    const seconvCandidates = [
+        seconvOverride,
+        Flow.GetToolPath('seconv'),
+        '/usr/local/bin/seconv',
+        '/app/common/subtitleedit/seconv'
+    ];
+    const seconvPath = seconvOverride || seconvCandidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || '';
+    const hasSeconv = seconvPath && System.IO.File.Exists(seconvPath);
 
     const installRoot = '/app/common/whispercpp';
     const modelDir = System.IO.Path.Combine(installRoot, 'models');
@@ -249,6 +257,17 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         }
     } else {
         Logger.ILog('[whisper-sub] VAD is disabled by user configuration.');
+    }
+
+    // Log seconv detection status
+    if (!disableSubtitlePostProcessing) {
+        if (hasSeconv) {
+            Logger.ILog(`[whisper-sub] SubtitleEdit (seconv) found at: ${seconvPath}`);
+        } else {
+            Logger.WLog('[whisper-sub] SubtitleEdit (seconv) not found. Post-processing will be skipped. Install SubtitleEdit or set variable "seconv".');
+        }
+    } else {
+        Logger.ILog('[whisper-sub] Subtitle post-processing is disabled by user configuration.');
     }
 
     // Initialize status
@@ -466,8 +485,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
     };
 
     const postProcessSubtitle = (srtPath) => {
-        if (!System.IO.File.Exists(seconvPath)) {
-            Logger.WLog('[whisper-sub] seconv not found, skipping post-processing');
+        if (!hasSeconv) {
             return false;
         }
         
@@ -498,7 +516,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         const result = Flow.Execute({
             command: seconvPath,
             argumentList: args,
-            logOutput: false
+            logOutput: debugMode
         });
         
         return result.exitCode === 0;
