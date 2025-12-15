@@ -3,7 +3,7 @@
  * @uid 1d1d3c0d-6e6b-4a34-bf2a-ffb9b5d6f1ae
  * @description Transcribes each audio track with whisper-cli into language-tagged SRT files using optimized models (ggml-distil-large-v3.5 for English, ggml-large-v3-turbo for other languages), with optional translation and flexible subtitle placement.
  * @author Gas-X-Extra-Strength
- * @revision 3
+ * @revision 4
  * @output Subtitles created
  * @output No subtitle created
  * @param {bool} TranslateToEnglish Translate generated subtitles to English.
@@ -484,7 +484,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
         return process;
     };
 
-    const preProcessRtlPunctuation = (srtPath) => {
+    const fixRtlPunctuation = (srtPath) => {
         try {
             let content = System.IO.File.ReadAllText(srtPath);
             
@@ -497,22 +497,23 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             // Fix punctuation at start of lines - move to end
             const lines = content.split(/\r?\n/);
             const fixedLines = lines.map(line => {
-                // Skip timestamp lines and sequence numbers
-                if (/^\d+$/.test(line.trim()) || /-->/.test(line)) {
+                // Skip timestamp lines, sequence numbers, and empty lines
+                if (/^\d+$/.test(line.trim()) || /-->/.test(line) || !line.trim()) {
                     return line;
                 }
-                // Match leading punctuation followed by optional space and text
-                const match = line.match(/^([.?!,])\s*(.+)$/);
-                if (match) {
-                    return match[2] + match[1];
+                // Match leading punctuation (with or without space) followed by text
+                const match = line.match(/^([.?!,])\s*(.*)$/);
+                if (match && match[2]) {
+                    return match[2].trimEnd() + match[1];
                 }
                 return line;
             });
             
             System.IO.File.WriteAllText(srtPath, fixedLines.join(lineEnding));
+            Logger.ILog('[whisper-sub] Fixed RTL punctuation in: ' + srtPath);
             return true;
         } catch (err) {
-            Logger.WLog('[whisper-sub] RTL pre-processing failed: ' + err);
+            Logger.WLog('[whisper-sub] RTL punctuation fix failed for ' + srtPath + ': ' + err);
             return false;
         }
     };
@@ -522,8 +523,8 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             return false;
         }
         
-        // Pre-process RTL punctuation before running seconv
-        preProcessRtlPunctuation(srtPath);
+        // RTL punctuation is now fixed by fixRtlPunctuation() immediately after subtitle creation
+        // so we don't need to call preProcessRtlPunctuation here anymore
         
         const dir = System.IO.Path.GetDirectoryName(srtPath);
         const filename = System.IO.Path.GetFileName(srtPath);
@@ -696,6 +697,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             created = true;
             processedLanguages.add(langForName);
             Logger.ILog(`[whisper-sub] Created subtitle for track ${i} -> ${targetSrt}.`);
+            fixRtlPunctuation(targetSrt);
             createdSubtitles.push(targetSrt);
             
             if (!disableSubtitlePostProcessing) {
@@ -742,6 +744,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     }
 
                     Logger.ILog(`[whisper-sub] Created English subtitle for track ${i} -> ${englishSrt}.`);
+                    fixRtlPunctuation(englishSrt);
                     processedLanguages.add('en');
                     created = true;
                     createdSubtitles.push(englishSrt);
@@ -787,6 +790,7 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
             }
 
             Logger.ILog(`[whisper-sub] Created translated subtitle for track ${i} -> ${translatedSrt}.`);
+            fixRtlPunctuation(translatedSrt);
             createdSubtitles.push(translatedSrt);
             
             if (!disableSubtitlePostProcessing) {
