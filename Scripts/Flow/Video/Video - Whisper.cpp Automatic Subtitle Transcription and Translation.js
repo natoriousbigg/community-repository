@@ -502,9 +502,9 @@ function Script(TranslateToEnglish, SkipOriginalLanguage, OverWriteExistingSubti
                     return line;
                 }
                 // Match leading punctuation (with or without space) followed by text
-                const match = line.match(/^([.?!,])\s*(.+)$/);
-                if (match) {
-                    return match[2] + match[1];
+                const match = line.match(/^([.?!,])\s*(.*)$/);
+                if (match && match[2]) {
+                    return match[2].trimEnd() + match[1];
                 }
                 return line;
             });
