@@ -1,197 +1,231 @@
 /**
- * Whisper.cpp Audio Language Tag Fixer
- * 
- * This script processes video files using Whisper.cpp to detect and fix
- * audio language tags in their metadata. It uses the ggml-base.bin model
- * for efficient speech recognition and language detection.
+ * @name Video - Whisper.cpp Fix Audio Language Tags
+ * @uid 08cf6e37-0c77-4c08-b8d3-2794f200882c
+ * @description Samples each audio track with whisper-cli to detect the spoken language and normalizes the track language tags (ISO 639-1) without running a full transcription.
+ * @author OpenAI-Assistant
+ * @revision 22
+ * @output Languages updated
+ * @output Languages unchanged
+ * @output No audio tracks found
+ * @param {bool} NoGpu Disable GPU acceleration for whisper-cli (default: false; GPU is on by default).
  */
+function Script(NoGpu) {
+    const ffModel = Variables.FfmpegBuilderModel;
+    const vi = Variables.vi?.VideoInfo;
+    const filePath = Variables.file?.FullName;
 
-// Configuration
-const MODEL_PATH = "./ggml-base.bin";
-const WHISPER_PATH = "./whisper.cpp";
-const TEMP_DIR = "./temp";
-const MAX_CONCURRENT = 3;
-
-// Helper function to check if file exists
-function fileExists(path) {
-  try {
-    const fs = require('fs');
-    return fs.existsSync(path);
-  } catch (e) {
-    return false;
-  }
-}
-
-// Helper function to execute command
-function executeCommand(command) {
-  try {
-    const { execSync } = require('child_process');
-    const output = execSync(command, { encoding: 'utf8' });
-    return { success: true, output: output.trim() };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-// Initialize Whisper.cpp with ggml-base.bin model
-function initializeWhisper() {
-  if (!fileExists(MODEL_PATH)) {
-    console.error(`Error: Model file not found at ${MODEL_PATH}`);
-    return false;
-  }
-  
-  if (!fileExists(WHISPER_PATH)) {
-    console.error(`Error: Whisper.cpp not found at ${WHISPER_PATH}`);
-    return false;
-  }
-  
-  console.log(`Initialized Whisper.cpp with model: ${MODEL_PATH}`);
-  return true;
-}
-
-// Detect language from audio file
-function detectLanguage(audioPath) {
-  const command = `${WHISPER_PATH} "${audioPath}" --model ${MODEL_PATH} --language auto --output-format json --output-dir ${TEMP_DIR}`;
-  
-  const result = executeCommand(command);
-  
-  if (!result.success) {
-    console.error(`Failed to process audio: ${result.error}`);
-    return null;
-  }
-  
-  try {
-    // Parse JSON output to extract detected language
-    const jsonMatch = result.output.match(/"language":\s*"([^"]+)"/);
-    if (jsonMatch && jsonMatch[1]) {
-      return jsonMatch[1];
+    if (!ffModel || !filePath) {
+        Logger.ELog('[whisper-cli] Missing FFMPEG Builder model or working file.');
+        return -1;
     }
-  } catch (e) {
-    console.error(`Failed to parse language detection result: ${e.message}`);
-  }
-  
-  return null;
-}
 
-// Update video metadata with detected language
-function updateVideoMetadata(videoPath, language) {
-  if (!language) {
-    console.warn(`No language detected for ${videoPath}`);
-    return false;
-  }
-  
-  // Use ffmpeg to update language tag
-  const command = `ffmpeg -i "${videoPath}" -c:v copy -c:a copy -metadata language="${language}" "${videoPath}.temp.mp4" && mv "${videoPath}.temp.mp4" "${videoPath}"`;
-  
-  const result = executeCommand(command);
-  
-  if (result.success) {
-    console.log(`Updated language tag for ${videoPath}: ${language}`);
-    return true;
-  } else {
-    console.error(`Failed to update metadata: ${result.error}`);
-    return false;
-  }
-}
-
-// Main processing function
-function processVideoFile(videoPath) {
-  console.log(`Processing video: ${videoPath}`);
-  
-  // Extract audio from video
-  const audioPath = `${TEMP_DIR}/audio_${Date.now()}.wav`;
-  const extractCommand = `ffmpeg -i "${videoPath}" -q:a 9 -n "${audioPath}"`;
-  
-  const extractResult = executeCommand(extractCommand);
-  if (!extractResult.success) {
-    console.error(`Failed to extract audio: ${extractResult.error}`);
-    return false;
-  }
-  
-  // Detect language from audio
-  const detectedLanguage = detectLanguage(audioPath);
-  
-  // Clean up temporary audio file
-  try {
-    const fs = require('fs');
-    if (fileExists(audioPath)) {
-      fs.unlinkSync(audioPath);
+    const audioStreams = vi?.AudioStreams;
+    if (!audioStreams || audioStreams.length === 0) {
+        Logger.WLog('[whisper-cli] No audio streams available.');
+        return 3;
     }
-  } catch (e) {
-    console.warn(`Failed to clean up temp audio: ${e.message}`);
-  }
-  
-  if (!detectedLanguage) {
-    console.error(`Failed to detect language for ${videoPath}`);
-    return false;
-  }
-  
-  // Update video metadata
-  return updateVideoMetadata(videoPath, detectedLanguage);
-}
 
-// Main execution
-function main() {
-  console.log("=== Whisper.cpp Audio Language Tag Fixer ===");
-  console.log(`Using model: ${MODEL_PATH}`);
-  
-  // Initialize Whisper
-  if (!initializeWhisper()) {
-    console.error("Failed to initialize Whisper.cpp");
-    process.exit(1);
-  }
-  
-  // Create temp directory if it doesn't exist
-  try {
-    const fs = require('fs');
-    if (!fileExists(TEMP_DIR)) {
-      fs.mkdirSync(TEMP_DIR, { recursive: true });
-    }
-  } catch (e) {
-    console.error(`Failed to create temp directory: ${e.message}`);
-    process.exit(1);
-  }
-  
-  // Get video files from command line arguments
-  const videoFiles = process.argv.slice(2);
-  
-  if (videoFiles.length === 0) {
-    console.error("Usage: node script.js <video_file> [video_file2] ...");
-    process.exit(1);
-  }
-  
-  let processed = 0;
-  let successful = 0;
-  
-  // Process each video file
-  videoFiles.forEach((videoFile) => {
-    if (fileExists(videoFile)) {
-      if (processVideoFile(videoFile)) {
-        successful++;
-      }
-      processed++;
-    } else {
-      console.error(`Video file not found: ${videoFile}`);
-    }
-  });
-  
-  console.log(`\n=== Processing Complete ===`);
-  console.log(`Processed: ${processed} files`);
-  console.log(`Successful: ${successful} files`);
-  
-  // Clean up temp directory
-  try {
-    const fs = require('fs');
-    const path = require('path');
-    const files = fs.readdirSync(TEMP_DIR);
-    files.forEach((file) => {
-      fs.unlinkSync(path.join(TEMP_DIR, file));
-    });
-    fs.rmdirSync(TEMP_DIR);
-  } catch (e) {
-    console.warn(`Failed to clean up temp directory: ${e.message}`);
-  }
-}
+    const isDocker = System.IO.File.Exists('/.dockerenv');
+    const platform = System.Environment.OSVersion?.Platform?.toString?.() || '';
+    const isWindows = platform === 'Win32NT' || platform === 'Win32Windows';
 
-// Run the script
-main();
+    const variableWhisper = (Variables['whisper'] || '').toString().trim();
+    const variableModel = (Variables['whisper-models'] || '').toString().trim();
+    const whisperCli = variableWhisper || Flow.GetToolPath('whisper-cli') || Flow.GetToolPath('whisper') || '/usr/local/bin/whisper-cli';
+
+    const installRoot = '/app/common/whispercpp';
+    const modelDir = System.IO.Path.Combine(installRoot, 'models');
+    const legacyModelLink = System.IO.Path.Combine(modelDir, 'model.bin');
+    const pickFirstExisting = (candidates) => candidates.find((candidate) => candidate && System.IO.File.Exists(candidate)) || '';
+    const pickFromDirectories = (directories, fileNames) => {
+        for (const dir of directories) {
+            const found = pickFirstExisting(fileNames.map((name) => System.IO.Path.Combine(dir, name)));
+            if (found)
+                return found;
+        }
+        return '';
+    };
+
+    const variableModelLower = variableModel.toLowerCase();
+    const overrideIsFile = variableModel && System.IO.File.Exists(variableModel) && variableModelLower.endsWith('.bin');
+    const overrideIsDirectory = variableModel && System.IO.Directory.Exists(variableModel);
+
+    // Validate whisper-models input: check for invalid file or empty folder
+    if (variableModel) {
+        if (!overrideIsFile && !overrideIsDirectory) {
+            Logger.ELog(`[whisper-cli] Invalid whisper-models path: '${variableModel}' is not a valid .bin file or directory.`);
+            Flow.Fail('Whisper Model Folder Empty');
+            return -1;
+        }
+        if (overrideIsDirectory) {
+            const binFiles = System.IO.Directory.GetFiles(variableModel, '*.bin');
+            if (!binFiles || binFiles.length === 0) {
+                Logger.ELog(`[whisper-cli] whisper-models folder '${variableModel}' contains no .bin files.`);
+                Flow.Fail('Whisper Model Folder Empty');
+                return -1;
+            }
+        }
+    }
+
+    const modelSearchDirs = [];
+    if (overrideIsDirectory)
+        modelSearchDirs.push(variableModel);
+    modelSearchDirs.push(modelDir);
+
+    const multilingualCandidates = [
+        'ggml-base.bin',
+        'ggml-large-v3-turbo.bin',
+        'ggml-large-v3.bin',
+        'ggml-large.bin',
+        'ggml-medium.bin',
+        legacyModelLink ? System.IO.Path.GetFileName(legacyModelLink) : ''
+    ].filter(Boolean);
+
+    const resolveModel = (explicitPath, fallbackDirs, candidates) => {
+        if (explicitPath) {
+            if (System.IO.Directory.Exists(explicitPath)) {
+                const found = pickFromDirectories([explicitPath], candidates);
+                if (found)
+                    return found;
+            } else if (System.IO.File.Exists(explicitPath)) {
+                return explicitPath;
+            }
+        }
+        return pickFromDirectories(fallbackDirs, candidates);
+    };
+
+    // If override is a .bin file, use it; otherwise find the best available model
+    let multilingualModel = overrideIsFile
+        ? variableModel
+        : resolveModel('', modelSearchDirs, multilingualCandidates);
+
+    const missing = [];
+    if (!System.IO.File.Exists(whisperCli))
+        missing.push(`binary at '${whisperCli}'`);
+    if (!multilingualModel)
+        missing.push('multilingual Whisper.cpp model (e.g., ggml-medium.bin or ggml-base.bin)');
+
+    if (missing.length > 0) {
+        Logger.ELog(`[whisper-cli] Whisper.cpp requirement missing: ${missing.join(' and ')}.`);
+        const installMsg = "Install the Whisper.cpp DockerMod for the binary and base models or provide paths via 'whisper' and 'whisper-models'.";
+        Logger.ELog(`[whisper-cli] ${installMsg}`);
+        return Flow.Fail('Whisper.cpp and/or required model missing, please install and set variables');
+    }
+
+    const parseBoolean = (value, fallback = false) => {
+        if (typeof value === 'string') {
+            const normalized = value.trim().toLowerCase();
+            if (['1', 'true', 'yes', 'on', 'enabled'].includes(normalized))
+                return true;
+            if (['0', 'false', 'no', 'off', 'disabled', ''].includes(normalized))
+                return false;
+        }
+        return typeof value === 'boolean' ? value : !!value || fallback;
+    };
+
+    const gpuParam = typeof Variables['NoGpu'] !== 'undefined' ? Variables['NoGpu'] : NoGpu;
+    const disableGpu = parseBoolean(gpuParam, false);
+
+    const durationSeconds = vi?.Duration?.TotalSeconds || vi?.VideoStreams?.[0]?.Duration?.TotalSeconds || 0;
+    const sampleStart = durationSeconds >= 1200 ? 600 : Math.max(0, durationSeconds - 600);
+    const sampleLength = Math.min(600, Math.max(60, durationSeconds - sampleStart));
+
+    const workingDir = Flow.TempPath || System.IO.Path.GetTempPath();
+    let updated = false;
+
+    const normalizeLanguage = (value) => {
+        const trimmed = (value || '').trim();
+        if (!trimmed)
+            return '';
+        const iso1 = LanguageHelper?.GetIso1Code?.(trimmed) || '';
+        const iso2 = LanguageHelper?.GetIso2Code?.(trimmed) || '';
+        return (iso1 || iso2 || trimmed).toLowerCase();
+    };
+
+    for (let i = 0; i < audioStreams.length; i++) {
+        const audio = audioStreams[i];
+        const builderAudio = ffModel.AudioStreams?.[i];
+
+        if (!audio || audio.Deleted) {
+            Logger.ILog(`[whisper-cli] Skipping audio track ${i} (missing or marked deleted).`);
+            continue;
+        }
+
+        const existingLang = normalizeLanguage(builderAudio?.Language || audio.Language);
+        const sampleFile = System.IO.Path.Combine(workingDir, `whispercpp_track_${i}.wav`);
+        if (System.IO.File.Exists(sampleFile))
+            System.IO.File.Delete(sampleFile);
+
+        Logger.ILog(`[whisper-cli] Extracting 10-minute sample from 10:00 for track ${i} to ${sampleFile}.`);
+        const ffmpeg = Flow.GetToolPath('ffmpeg');
+        if (!ffmpeg) {
+            Logger.ELog('[whisper-cli] ffmpeg not found in PATH.');
+            return -1;
+        }
+
+        const extractArgs = [
+            '-hide_banner', '-y',
+            '-ss', sampleStart.toFixed(2),
+            '-i', filePath,
+            '-map', `0:a:${i}`,
+            '-t', sampleLength.toFixed(2),
+            '-vn', '-acodec', 'pcm_s16le', '-ac', '1', '-ar', '16000',
+            sampleFile
+        ];
+
+        const extract = Flow.Execute({ command: ffmpeg, argumentList: extractArgs, logOutput: true });
+        if (extract.exitCode !== 0) {
+            Logger.WLog(`[whisper-cli] Failed to extract audio track ${i}: ${extract.output}`);
+            continue;
+        }
+
+        Logger.ILog(`[whisper-cli] Detecting language for track ${i} using whisper-cli (detection only).`);
+        const whisperArgs = ['--model', multilingualModel, '--file', sampleFile, '--language', 'auto', '--detect-language', 'true'];
+        if (disableGpu)
+            whisperArgs.push('--no-gpu');
+
+        const process = Flow.Execute({
+            command: whisperCli,
+            argumentList: whisperArgs,
+            logOutput: false
+        });
+
+        if (process.exitCode !== 0) {
+            Logger.WLog(`[whisper-cli] whisper-cli failed for track ${i}: ${process.output}`);
+            return Flow.Fail('Whisper Execution Failed');
+        }
+
+        const match = (process.output || '').match(/auto-detected language:\s*([a-zA-Z-]+)/i);
+        const detectedRaw = match ? match[1] : '';
+        const detected = normalizeLanguage(detectedRaw);
+
+        if (!detected) {
+            Logger.WLog(`[whisper-cli] Could not determine language for track ${i}. Output: ${process.output}`);
+            return Flow.Fail('Whisper Execution Failed');
+        }
+
+        if (existingLang === detected) {
+            Logger.ILog(`[whisper-cli] Track ${i} language already '${detected}'. No change needed.`);
+            continue;
+        }
+
+        if (!existingLang) {
+            Logger.ILog(`[whisper-cli] Track ${i} language missing; setting to '${detected}'.`);
+        } else {
+            Logger.WLog(`[whisper-cli] Track ${i} language '${existingLang}' differs from detected '${detected}'; updating.`);
+        }
+
+        if (builderAudio)
+            builderAudio.Language = detected;
+        audio.Language = detected;
+        ffModel.ForceEncode = true;
+        updated = true;
+    }
+
+    if (!updated) {
+        Logger.ILog('[whisper-cli] No language changes were required.');
+        return 2;
+    }
+
+    return 1;
+}
